@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 
 import streamlit as st
-import funktionen as fun
+
 
 
 st.set_page_config(layout="wide", page_title="Coffeecrawler Charakterbogen", page_icon="CoffeCrawler.jpg")
