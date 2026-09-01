@@ -1,0 +1,193 @@
+
+/* style.css */
+
+.st-key-text_inp {
+        /* 1. Das eigentliche Eingabefeld (Input-Box) stylen */
+    div[data-baseweb="input"] {
+        margin-top: 0px;
+    }
+
+    /* 2. Zustand beim Reinklicken (Fokus) */
+    div[data-baseweb="input"]:focus-within {
+        border-color: #007bff !important;
+        box-shadow: 0 0 8px rgba(0, 123, 255, 0.2);
+        margin-top: 0px;
+
+    }
+
+    /* 3. Den darin liegenden Text anpassen */
+    div[data-baseweb="input"] input {
+        color: #B3826C;
+        font-size: 16px;
+        font-family: "Rye", Georgia, serif;
+        margin-top: 0px;
+    }
+
+    /* 4. Den Platzhalter-Text (Placeholder) stylen */
+    div[data-baseweb="input"] input::placeholder {
+        color: #999999;
+        font-style: italic;
+    }
+
+}
+
+
+.st-key-CSS_Charakterdetails {
+    display: flex;
+    /*color :white;*/
+    font-size: 16px;
+    font-weight: bold;
+    text-align: left;
+    /*max-width: auto;*/
+
+}
+.st-key-CSS_Container_AttributeundTalente {
+    display: flex;
+    align-items: center;    /* Alle Elemente horizontal zentrieren */
+    justify-content: center;/* Vertikale Zentrierung (falls feste Höhe) */
+    gap: 15px;              /* Abstand zwischen Text und Buttons */
+    margin: 0 auto;         /* Zentriert den gesamten Container auf der Seite */
+    /*color :white;*/
+    font-size: 18px;
+    font-weight: bold;
+    text-align: center;
+
+    /*max-width: auto;*/
+
+}
+.st-key-Attributswerte2 {
+    display: flex;
+    align-items: center;    /* Alle Elemente horizontal zentrieren */
+    justify-content: center;/* Vertikale Zentrierung (falls feste Höhe) */
+    gap: 15px;              /* Abstand zwischen Text und Buttons */
+    margin: 0 auto;         /* Zentriert den gesamten Container auf der Seite */
+    color :white;
+    font-size: 18px;
+    font-weight: bold;
+    text-align: center;
+    /*max-width: 600px;*/
+
+}
+.st-key-Talentwerte {
+
+    /*align-items: center; /* Alle Elemente horizontal zentrieren */
+    /*justify-content: center; /* Vertikale Zentrierung (falls feste Höhe) */
+    /*gap: 15px; /* Abstand zwischen Text und Buttons */
+    /*margin: 0 auto; /* Zentriert den gesamten Container auf der Seite */
+    /*color: white;*/
+    font-size: 18px;
+    font-weight: bold;
+    text-align: left;
+    max-width: 600px;
+    margin: auto;
+
+}
+.st-key-Talente{
+      div[data-testid="stVerticalBlock"] {
+        gap: 5px
+    }
+}
+.st-key-TalentwerteSpeicher {
+    font-size: 18px;
+    text-align: center;
+    max-width: 600px;
+    margin: 10% 0;
+}
+.st-key-Kampftalente {
+    font-size: 18px;
+    text-align: center;
+    max-width: 600px;
+    margin: 10% 0;
+}
+.st-key-Handverteilung {
+    font-size: 18px;
+    text-align: center;
+    margin: 0;
+    div[data-testid="stVerticalBlock"] {
+        gap: 5px
+    }
+}
+.st-key-Angriffe{
+    div[data-testid="stVerticalBlock"] {
+        gap: 5px
+    }
+}
+
+
+    /* Wir sprechen die Streamlit-Key-Klasse des Headers an */
+#mein_mittelalter_header {
+    font-family: 'Algerian', serif;
+    color: #B3826C;          /* Kastanienbraun */
+    font-size: 35px;
+    text-align: center;
+    text-shadow: 2px 2px 4px ;
+    border-bottom: 2px double #B3826C;
+    padding-bottom: 3px;
+}
+
+
+/* 1. Die gesamte Tab-Leiste (Hintergrund und Abstände) */
+.st-key-mein_tab_system [data-baseweb="tab-list"] {
+    /*background-color: #f0f2f6*/
+    padding: 5px;
+    border-radius: 8px 8px 0 0;
+    gap: 5px;
+}
+
+/* 2. Alle inaktiven Tabs (Standard-Zustand) */
+.st-key-mein_tab_system button[data-baseweb="tab"] {
+    font-family: 'Times New Roman', serif;
+    font-size: 20px;
+    color: #555555;
+    /*background-color: #e0e2e6;*/
+    border-radius: 5px 5px 0 0;
+    padding: 10px 20px;
+}
+
+/* 3. NUR der aktuell ausgewählte/aktive Tab */
+.st-key-mein_tab_system button[aria-selected="true"] {
+
+    color: #8B4513 !important;      /* Mittelalter-Braun */
+    background-color: #FFF8DC !important; /* Pergament-Weiß */
+    font-weight: bold;
+    border-bottom: 2px solid #8B4513;
+
+}
+
+/* 4. Die dünne Standard-Unterlinie von Streamlit ausblenden */
+.st-key-mein_tab_system [data-baseweb="tab-border"] {
+    background-color: transparent !important;
+}
+
+.st-key-grosse_tabs button[data-baseweb="tab"] {
+    font-size: 26px !important; /* Macht den Text riesig */
+    padding: 25px 15px !important; /* Macht die Schaltflächen höher und breiter */
+
+}
+
+
+.st-key-GroßButton {
+
+    height: 60px;
+    font-size: 23px;
+    /*font-weight: bold;*/
+    text-align: left;
+    max-width: 600px;
+    margin: auto;
+
+
+}
+
+.st-key-Hotslots_Übersicht{
+    display: flex;
+    font-size: 16px;
+    font-weight: bold;
+    text-align: left;
+}
+
+.st-key-Itemmenge {
+    display: flex;
+    font-size: 16px;
+    font-weight: bold;
+    text-align: left;
+}
