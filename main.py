@@ -6,11 +6,12 @@ import time
 from pathlib import Path
 
 import streamlit as st
-
+import funktionen as fun
 
 
 st.set_page_config(layout="wide", page_title="Coffeecrawler Charakterbogen", page_icon="CoffeCrawler.jpg")
 st.html(Path(__file__).parent / "styles.css")
+
 
 
 ################################## region 1. INITIALISIERUNG DES SESSION STATES
@@ -35,7 +36,8 @@ standard_werte = {
     "Geschick": 40,
     "Konstitution": 40,
     "Steigerungspunkte": 40,
-    "Diredare": "",
+    "Diredare": 0,
+    "Diredare ausgegeben/verdient" : "",
     "Erlernte Fähigkeiten": "",
     "Beruf": "",
     "Hintergrund": "",
@@ -262,6 +264,23 @@ WÜRFEL_SEITEN = {"": 0 ,"W4": 4, "W6": 6, "W8": 8, "W10": 10, "W12": 12, "W20":
 def würfel_würfeln(würfel):
     return random.randint(1, WÜRFEL_SEITEN[würfel])
 
+def diredare_aendern():
+    """Wertet die Eingabe im Diredare-Feld aus:
+    - Steht ein '+' oder '-' am Anfang -> zum aktuellen Wert dazurechnen/abziehen.
+    - Sonst -> Wert direkt übernehmen (überschreiben)."""
+    eingabe = st.session_state["diredare_eingabe"].strip()
+    if not eingabe:
+        return
+    try:
+        if eingabe[0] in "+-":
+            st.session_state["Diredare"] += int(eingabe)
+        else:
+            st.session_state["Diredare"] = int(eingabe)
+    except ValueError:
+        st.error("Bitte eine gültige Zahl eingeben (z.B. 50, +10, -5)")
+    st.session_state["diredare_eingabe"] = ""
+
+
 # endregion
 
 ################################## region 3. SIDEBAR
@@ -351,7 +370,7 @@ tab_Übersicht, tab_Charakter, tab_Talente_Attribute, tab_Skills, tab_Inventar, 
 
 ################################## region 4.1 Übersicht
 
-with tab_Übersicht:
+with (((tab_Übersicht))):
     col_Details, col_Werte, col_Kampf, col_Portrait = st.columns(4)
 
     with col_Details:
@@ -538,8 +557,20 @@ with tab_Übersicht:
                     wert_item = st.session_state.get(f"item {i}", "")
                     st.html(f'<p class=st-key-Talentwerte>{wert_item}</p>')
 
-            diredare = st.session_state["Diredare"]
-            st.html(f'<p class=st-key-Talentwerte>🤑Diredare:&emsp;{diredare}</p>')
+
+            st.divider()
+
+            st.subheader("🤑 Diredare")
+            st.write(f"Aktuell: {st.session_state['Diredare']}")
+            st.text_input(
+                "Diredare ändern (z.B. 50 = setzen, +10 / -5 = verrechnen)",
+                key="diredare_eingabe",
+                on_change=diredare_aendern,
+                label_visibility="collapsed",
+            )
+
+
+
 
         with st.container(border=True, key="Hotslots_Übersicht"):
             st.subheader("Hotslots")
@@ -634,7 +665,7 @@ with tab_Talente_Attribute:
                         )
 
                 st.space()
-                st.html(f"Steigerungspunkte: {st.session_state['Steigerungspunkte']}")
+                #st.html(f"Steigerungspunkte: {st.session_state['Steigerungspunkte']}")
 
         with col_Talente:
             st.subheader("Talente")
@@ -821,7 +852,7 @@ with tab_Inventar:
 
     with col_Diredare:
         st.header("🤑 Diredare")
-        st.text_input("Diredare", key="Diredare", label_visibility="collapsed")
+        st.number_input("Diredare", key="Diredare", step=1, label_visibility="collapsed")
 
 #endregion
 
