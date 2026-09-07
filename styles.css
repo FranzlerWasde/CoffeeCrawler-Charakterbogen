@@ -50,7 +50,7 @@
     /*color :white;*/
     font-size: 18px;
     font-weight: bold;
-    text-align: center;
+    text-align: left;
 
     /*max-width: auto;*/
 
@@ -64,7 +64,7 @@
     color :white;
     font-size: 18px;
     font-weight: bold;
-    text-align: center;
+    text-align: left;
     /*max-width: 600px;*/
 
 }
@@ -89,19 +89,19 @@
 }
 .st-key-TalentwerteSpeicher {
     font-size: 18px;
-    text-align: center;
+    text-align: left;
     max-width: 600px;
     margin: 10% 0;
 }
 .st-key-Kampftalente {
     font-size: 18px;
-    text-align: center;
+    text-align: left;
     max-width: 600px;
     margin: 10% 0;
 }
 .st-key-Handverteilung {
     font-size: 18px;
-    text-align: center;
+    text-align: left;
     margin: 0;
     div[data-testid="stVerticalBlock"] {
         gap: 5px
@@ -119,7 +119,7 @@
     font-family: 'Algerian', serif;
     color: #B3826C;          /* Kastanienbraun */
     font-size: 35px;
-    text-align: center;
+    text-align: left;
     text-shadow: 2px 2px 4px ;
     border-bottom: 2px double #B3826C;
     padding-bottom: 3px;
