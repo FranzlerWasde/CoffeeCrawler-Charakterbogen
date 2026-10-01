@@ -1,7 +1,3 @@
-Datenbank Charakterbogen
-
-
-Get
 """
 
 PnP-Charakterbogen – Einzeldatei-Version für die Online-Playground (stlite)
@@ -558,8 +554,5 @@ else:
 
 seite_spielleiter()
 
-© 2026 Hyper Notepad
 
-Contact
-Legal
 
