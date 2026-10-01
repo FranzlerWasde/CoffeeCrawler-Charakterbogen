@@ -22,7 +22,7 @@ import streamlit.components.v1 as components
 
 # =============================================================== EINSTELLUNGEN
 
-GM_PASSWORT = "spielleiter"  # <- ändern
+GM_PASSWORT = ""  # <- ändern
 NEU = "➕ Neuer Charakter"
 DB_PATH = Path("charaktere.db")
 
