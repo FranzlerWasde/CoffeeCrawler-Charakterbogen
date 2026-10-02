@@ -1,16 +1,23 @@
 """
-PnP-Charakterbogen (Miniregelwerk) mit SQLite-Datenbank und Spielleiter-Bereich.
+PnP-Charakterbogen – Einzeldatei-Version für die Online-Playground (stlite)
+https://edit.share.stlite.net/
 
-Start lokal mit:  streamlit run charakterbogen_komplett.py
-Die Datenbank liegt in "charaktere.db" neben dem Skript. Über die Sidebar kann eine
-bestehende Datenbank hochgeladen werden, im Bereich "Spielleiter" gibt es das Backup.
+Alles in einer Datei: Datenbank (SQLite), Beispieldaten und Oberfläche.
+Hinweis: In der Playground liegt die Datenbank nur im Arbeitsspeicher des Browsers.
+Beim Neuladen der Seite ist sie leer -> Backup über "Spielleiter" herunterladen/einspielen.
+(Das Backup enthält auch alle hochgeladenen Handouts.)
+
+AUFBAU DER DATEI
+  1. Einstellungen
+  2. Datenbank        (Grundlagen · Charaktere · Handouts · Beispieldaten)
+  3. Gemeinsame UI-Helfer (von Spielern UND Spielleiter genutzt)
+  4. Spieler-Bereich      (Charakterbogen · Handouts ansehen)
+  5. Spielleiter-Bereich  (Charaktere · Handouts verwalten · Backup)
+  6. Sidebar & Navigation
+  7. Start
 """
-
 import base64
-import binascii
 import json
-import random
-import re
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime
@@ -20,43 +27,39 @@ import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
-# =============================================================== EINSTELLUNGEN
-
-GM_PASSWORT = "spielleiter"  # <- ändern
+# =============================================================================
+# 1. EINSTELLUNGEN
+# =============================================================================
+GM_PASSWORT = "asdf"  # <- ändern
+ATTRIBUTE = ["Stärke", "Geschick", "Konstitution", "Intelligenz", "Weisheit", "Charisma"]
+INVENTAR_SPALTEN = ["Gegenstand", "Anzahl", "Notiz"]
 NEU = "➕ Neuer Charakter"
 DB_PATH = Path("charaktere.db")
 
-OPTIONS = ["W4", "W6", "W8", "W10", "W12"]
-ATTRIBUTE = ["Stärke", "Geschicklichkeit", "Konstitution", "Intelligenz",
-             "Weisheit", "Wahrnehmung", "Erscheinung", "Charisma", "Manipulation"]
-ANZAHL_TALENTE = 3
-MAX_HISTORIE = 50
-PNG_PREFIX = "data:image/png;base64,"
+# Menüpunkte für Spieler
+AKTION_NEU = "Neuen Charakter erstellen"
+AKTION_LADEN = "Charakter aus der Datenbank auswählen"
+AKTION_HANDOUTS = "Handouts ansehen"
+SPIELER_AKTIONEN = [AKTION_NEU, AKTION_LADEN, AKTION_HANDOUTS]
 
-st.markdown(
-    """
-    <style>
-    div[data-testid="stHorizontalBlock"] {
-        flex-wrap: nowrap !important;
-    }
-    div[data-testid="stColumn"] {
-        min-width: 0 !important;
-    }
-    .st-key-hp_button button,
-    .st-key-hist_button button,
-    [class*="st-key-wurf_"] button {
-        padding: 0.1rem 0.6rem;
-        min-height: 0;
-        font-size: 0.85rem;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+# Menüpunkte für den Spielleiter (nur nach Login sichtbar)
+AKTION_GM_CHARAKTERE = "🔒 Spielleiter: Charaktere"
+AKTION_GM_HANDOUTS = "🔒 Spielleiter: Handouts verwalten"
+AKTION_GM_BACKUP = "🔒 Spielleiter: Backup"
+GM_AKTIONEN = [AKTION_GM_CHARAKTERE, AKTION_GM_HANDOUTS, AKTION_GM_BACKUP]
+
+# Dateitypen, die sich im Browser anzeigen lassen, ohne dass ein Download nötig ist
+HANDOUT_TYPEN = {
+    "png": "bild", "jpg": "bild", "jpeg": "bild", "gif": "bild", "webp": "bild",
+    "pdf": "pdf", "txt": "text", "md": "text",
+}
 
 
-# =============================================================== DATENBANK
+# =============================================================================
+# 2. DATENBANK
+# =============================================================================
 
+# ----- 2a. Grundlagen
 @contextmanager
 def verbindung():
     conn = sqlite3.connect(DB_PATH)
@@ -74,23 +77,35 @@ def init_db():
         conn.executescript(
             """
             CREATE TABLE IF NOT EXISTS spieler (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id   INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL UNIQUE
             );
             CREATE TABLE IF NOT EXISTS charaktere (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                spieler_id INTEGER NOT NULL REFERENCES spieler(id) ON DELETE CASCADE,
-                name TEXT NOT NULL,
-                daten TEXT NOT NULL,
-                erstellt_am TEXT NOT NULL,
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                spieler_id   INTEGER NOT NULL REFERENCES spieler(id) ON DELETE CASCADE,
+                name         TEXT NOT NULL,
+                klasse       TEXT,
+                stufe        INTEGER DEFAULT 1,
+                daten        TEXT NOT NULL,
+                erstellt_am  TEXT NOT NULL,
                 geaendert_am TEXT NOT NULL,
                 UNIQUE (spieler_id, name)
+            );
+            CREATE TABLE IF NOT EXISTS handouts (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                titel        TEXT NOT NULL,
+                dateiname    TEXT NOT NULL,
+                typ          TEXT NOT NULL,
+                daten        BLOB NOT NULL,
+                sichtbar     INTEGER NOT NULL DEFAULT 0,
+                erstellt_am  TEXT NOT NULL
             );
             """
         )
 
 
-def charakter_speichern(spieler_name, name, bogen):
+# ----- 2b. Charaktere
+def charakter_speichern(spieler_name, bogen):
     jetzt = datetime.now().isoformat(timespec="seconds")
     with verbindung() as conn:
         conn.execute("INSERT OR IGNORE INTO spieler (name) VALUES (?)", (spieler_name,))
@@ -99,12 +114,14 @@ def charakter_speichern(spieler_name, name, bogen):
         ).fetchone()["id"]
         conn.execute(
             """
-            INSERT INTO charaktere (spieler_id, name, daten, erstellt_am, geaendert_am)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO charaktere (spieler_id, name, klasse, stufe, daten, erstellt_am, geaendert_am)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT (spieler_id, name) DO UPDATE SET
+                klasse = excluded.klasse, stufe = excluded.stufe,
                 daten = excluded.daten, geaendert_am = excluded.geaendert_am
             """,
-            (spieler_id, name, json.dumps(bogen, ensure_ascii=False), jetzt, jetzt),
+            (spieler_id, bogen["name"], bogen.get("klasse"), bogen.get("stufe", 1),
+             json.dumps(bogen, ensure_ascii=False), jetzt, jetzt),
         )
 
 
@@ -115,7 +132,7 @@ def charaktere_von_spieler(spieler_name):
                WHERE s.name = ? ORDER BY c.name""",
             (spieler_name,),
         ).fetchall()
-    return [r["name"] for r in rows]
+        return [r["name"] for r in rows]
 
 
 def charakter_laden(spieler_name, charakter_name):
@@ -125,7 +142,7 @@ def charakter_laden(spieler_name, charakter_name):
                WHERE s.name = ? AND c.name = ?""",
             (spieler_name, charakter_name),
         ).fetchone()
-    return json.loads(row["daten"]) if row else None
+        return json.loads(row["daten"]) if row else None
 
 
 def charakter_loeschen(spieler_name, charakter_name):
@@ -140,706 +157,485 @@ def charakter_loeschen(spieler_name, charakter_name):
 def alle_charaktere():
     with verbindung() as conn:
         rows = conn.execute(
-            """SELECT s.name AS spieler, c.name, c.geaendert_am
+            """SELECT s.name AS spieler, c.name, c.klasse, c.stufe, c.geaendert_am
                FROM charaktere c JOIN spieler s ON s.id = c.spieler_id
                ORDER BY s.name, c.name"""
         ).fetchall()
-    return [dict(r) for r in rows]
+        return [dict(r) for r in rows]
 
 
-def datenbank_einspielen(inhalt: bytes):
-    """Ersetzt die Datenbank durch hochgeladene Bytes. Gibt (ok, meldung) zurück."""
-    if not inhalt.startswith(b"SQLite format 3"):
-        return False, "Das ist keine gültige SQLite-Datei."
-    alt = DB_PATH.read_bytes() if DB_PATH.exists() else None
-    DB_PATH.write_bytes(inhalt)
-    try:
-        init_db()
-        alle_charaktere()  # prüft, ob die Tabellen zur App passen
-    except sqlite3.Error:
-        if alt is not None:
-            DB_PATH.write_bytes(alt)
-        else:
-            DB_PATH.unlink(missing_ok=True)
-        return False, "Die Datenbank hat nicht die erwartete Struktur."
-    return True, "Datenbank geladen."
+# ----- 2c. Handouts
+def handout_speichern(titel, dateiname, typ, daten, sichtbar):
+    jetzt = datetime.now().isoformat(timespec="seconds")
+    with verbindung() as conn:
+        conn.execute(
+            """INSERT INTO handouts (titel, dateiname, typ, daten, sichtbar, erstellt_am)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (titel, dateiname, typ, daten, int(sichtbar), jetzt),
+        )
 
 
-# =============================================================== PORTRAIT-KOMPONENTE
+def handouts_liste(nur_sichtbar=True):
+    sql = "SELECT id, titel, dateiname, typ, sichtbar, erstellt_am FROM handouts"
+    if nur_sichtbar:
+        sql += " WHERE sichtbar = 1"
+    sql += " ORDER BY erstellt_am DESC, id DESC"
+    with verbindung() as conn:
+        return [dict(r) for r in conn.execute(sql).fetchall()]
 
-PORTRAIT_INDEX = """<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<style>
-  body { margin: 0; }
-  #wrap { font-family: sans-serif; font-size: 14px; }
-  details {
-    border: 1px solid #888;
-    border-radius: 8px;
-    padding: 4px 10px;
-    margin-bottom: 6px;
-  }
-  summary { cursor: pointer; padding: 2px 0; }
-  .row {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-    flex-wrap: wrap;
-    padding: 6px 0 4px 0;
-  }
-  canvas {
-    display: block;
-    border: 1px solid #888;
-    background: #fff;
-    touch-action: none;
-    max-width: 100%;
-  }
-</style>
-</head>
-<body>
-<div id="wrap">
-  <details id="tools" open>
-    <summary>🛠 Werkzeuge</summary>
-    <div class="row">
-      <input type="color" id="farbe" value="#000000" title="Farbe">
-      <input type="range" id="breite" min="1" max="20" value="3" title="Strichbreite">
-      <button id="undo">↶ Zurück</button>
-      <button id="clear">🗑 Leeren</button>
-      <button id="save">💾 PNG</button>
-    </div>
-  </details>
-  <canvas id="c" width="300" height="380"></canvas>
-</div>
 
-<script>
-// --- Streamlit-Komponenten-Protokoll ---
-function senden(type, daten) {
-  window.parent.postMessage(
-    Object.assign({ isStreamlitMessage: true, type: type }, daten), "*"
-  );
-}
-function setzeHoehe() {
-  senden("streamlit:setFrameHeight",
-         { height: document.getElementById('wrap').offsetHeight + 4 });
-}
-function sendeWert(wert) {
-  senden("streamlit:setComponentValue", { value: wert, dataType: "json" });
+def handout_laden(handout_id):
+    with verbindung() as conn:
+        row = conn.execute("SELECT * FROM handouts WHERE id = ?", (handout_id,)).fetchone()
+        return dict(row) if row else None
+
+
+def handout_sichtbarkeit(handout_id, sichtbar):
+    with verbindung() as conn:
+        conn.execute("UPDATE handouts SET sichtbar = ? WHERE id = ?", (int(sichtbar), handout_id))
+
+
+def handout_loeschen(handout_id):
+    with verbindung() as conn:
+        conn.execute("DELETE FROM handouts WHERE id = ?", (handout_id,))
+
+
+# ----- 2d. Beispieldaten
+BEISPIELE = {
+    "Anna": [{
+        "name": "Thorin Eisenfaust", "klasse": "Krieger", "rasse": "Zwerg", "stufe": 3,
+        "attribute": {"Stärke": 16, "Geschick": 10, "Konstitution": 15,
+                      "Intelligenz": 9, "Weisheit": 11, "Charisma": 8},
+        "lp_max": 34, "lp_aktuell": 28,
+        "inventar": [{"Gegenstand": "Streitaxt", "Anzahl": 1, "Notiz": "1W8+3"},
+                     {"Gegenstand": "Heiltrank", "Anzahl": 2, "Notiz": ""}],
+        "notizen": "Sucht den verlorenen Hammer seines Clans.",
+    }],
+    "Ben": [{
+        "name": "Lyra Nachtwind", "klasse": "Magierin", "rasse": "Elfe", "stufe": 2,
+        "attribute": {"Stärke": 8, "Geschick": 14, "Konstitution": 10,
+                      "Intelligenz": 17, "Weisheit": 12, "Charisma": 13},
+        "lp_max": 14, "lp_aktuell": 14,
+        "inventar": [{"Gegenstand": "Zauberstab", "Anzahl": 1, "Notiz": ""},
+                     {"Gegenstand": "Schriftrolle Feuerball", "Anzahl": 1, "Notiz": "einmalig"}],
+        "notizen": "Misstraut der Magiergilde.",
+    }, {
+        "name": "Pip Fingerfix", "klasse": "Schurke", "rasse": "Halbling", "stufe": 1,
+        "attribute": {"Stärke": 7, "Geschick": 17, "Konstitution": 11,
+                      "Intelligenz": 12, "Weisheit": 10, "Charisma": 14},
+        "lp_max": 9, "lp_aktuell": 9,
+        "inventar": [{"Gegenstand": "Dietriche", "Anzahl": 1, "Notiz": ""}],
+        "notizen": "",
+    }],
 }
 
-// --- Canvas ---
-const c = document.getElementById('c');
-const ctx = c.getContext('2d');
-const farbe = document.getElementById('farbe');
-const breite = document.getElementById('breite');
-const tools = document.getElementById('tools');
-const verlauf = [];
-let zeichnet = false;
-let geladen = false;
 
-function weiss() {
-  ctx.fillStyle = '#fff';
-  ctx.fillRect(0, 0, c.width, c.height);
-}
-weiss();
-ctx.lineCap = 'round';
-ctx.lineJoin = 'round';
-
-function zeichneBild(src) {
-  const img = new Image();
-  img.onload = () => {
-    weiss();
-    ctx.drawImage(img, 0, 0, c.width, c.height);
-  };
-  img.src = src;
-}
-
-function pos(e) {
-  const r = c.getBoundingClientRect();
-  return [(e.clientX - r.left) * c.width / r.width,
-          (e.clientY - r.top) * c.height / r.height];
-}
-function schritt() {
-  verlauf.push(ctx.getImageData(0, 0, c.width, c.height));
-  if (verlauf.length > 20) verlauf.shift();
-}
-
-c.addEventListener('pointerdown', e => {
-  schritt();
-  zeichnet = true;
-  ctx.strokeStyle = farbe.value;
-  ctx.lineWidth = breite.value;
-  const [x, y] = pos(e);
-  ctx.beginPath();
-  ctx.moveTo(x, y);
-  ctx.lineTo(x + 0.01, y);
-  ctx.stroke();
-  c.setPointerCapture(e.pointerId);
-});
-c.addEventListener('pointermove', e => {
-  if (!zeichnet) return;
-  const [x, y] = pos(e);
-  ctx.lineTo(x, y);
-  ctx.stroke();
-});
-c.addEventListener('pointerup', () => {
-  if (!zeichnet) return;
-  zeichnet = false;
-  sendeWert(c.toDataURL('image/png'));
-});
-
-document.getElementById('undo').onclick = () => {
-  const s = verlauf.pop();
-  if (s) {
-    ctx.putImageData(s, 0, 0);
-    sendeWert(c.toDataURL('image/png'));
-  }
-};
-document.getElementById('clear').onclick = () => {
-  schritt();
-  weiss();
-  sendeWert("");  // leerer String = Portrait ist leer
-};
-document.getElementById('save').onclick = () => {
-  const a = document.createElement('a');
-  a.href = c.toDataURL('image/png');
-  a.download = 'charakterportrait.png';
-  a.click();
-};
-
-tools.addEventListener('toggle', setzeHoehe);
-
-// --- Nachrichten von Streamlit ---
-window.addEventListener('message', e => {
-  if (!e.data || e.data.type !== 'streamlit:render') return;
-  if (e.data.theme && e.data.theme.textColor) {
-    document.body.style.color = e.data.theme.textColor;
-  }
-  if (!geladen) {
-    geladen = true;
-    const start = e.data.args && e.data.args.initial;
-    if (start) zeichneBild(start);
-  }
-  setzeHoehe();
-});
-
-senden("streamlit:componentReady", { apiVersion: 1 });
-setzeHoehe();
-</script>
-</body>
-</html>
-"""
-
-PORTRAIT_DIR = Path(__file__).parent / "portrait_component"
-PORTRAIT_DIR.mkdir(exist_ok=True)
-_index = PORTRAIT_DIR / "index.html"
-if not _index.exists() or _index.read_text(encoding="utf-8") != PORTRAIT_INDEX:
-    _index.write_text(PORTRAIT_INDEX, encoding="utf-8")
-
-portrait_komponente = components.declare_component(
-    "charakter_portrait", path=str(PORTRAIT_DIR)
-)
+def beispieldaten_laden():
+    for spieler, charaktere in BEISPIELE.items():
+        for bogen in charaktere:
+            charakter_speichern(spieler, bogen)
 
 
-# =============================================================== HILFSFUNKTIONEN
+# =============================================================================
+# 3. GEMEINSAME UI-HELFER (Spieler + Spielleiter)
+# =============================================================================
 
+# ----- Charakter-Daten
 def leerer_bogen():
     return {
-        "charakter": {"name": "", "alter": None, "aussehen": ""},
-        "portrait": None,
-        "attribute": {a: "W4" for a in ATTRIBUTE},
-        "hp": {"aktuell": None, "maximum": None},
-        "mana": {"name": "", "prozent": 100},
-        "talente": [],
+        "name": "", "klasse": "", "rasse": "", "stufe": 1,
+        "attribute": {a: 10 for a in ATTRIBUTE},
+        "lp_max": 10, "lp_aktuell": 10, "inventar": [], "notizen": "",
     }
 
 
-def wuerfel_ok(wert):
-    return wert if wert in OPTIONS else None
+def inventar_zu_df(inventar):
+    df = pd.DataFrame(inventar, columns=INVENTAR_SPALTEN)
+    df["Gegenstand"] = df["Gegenstand"].astype(str)
+    df["Anzahl"] = pd.to_numeric(df["Anzahl"], errors="coerce").fillna(1).astype(int)
+    df["Notiz"] = df["Notiz"].astype(str)
+    return df
 
 
-def bogen_in_state(daten, fallback_name=""):
-    """Schreibt einen Charakterbogen (Dict) in die Widget-Werte (session_state).
-    Muss aufgerufen werden, BEVOR die Widgets erzeugt werden."""
-    char = daten.get("charakter", {})
-    if not isinstance(char, dict):
-        char = {}
-    st.session_state["char_name"] = char.get("name") or fallback_name
-    alter = char.get("alter")
-    st.session_state["char_alter"] = alter if isinstance(alter, int) else None
-    aussehen = char.get("aussehen", "")
-    st.session_state["char_aussehen"] = aussehen if isinstance(aussehen, str) else ""
-
-    # Portrait: neuer Key erzeugt das Canvas neu und lädt die Zeichnung hinein
-    portrait = daten.get("portrait")
-    st.session_state["portrait_data"] = (
-        portrait if isinstance(portrait, str) and portrait.startswith(PNG_PREFIX) else None
-    )
-    st.session_state["portrait_version"] += 1
-
-    # Attribute
-    attr = daten.get("attribute", {})
-    if not isinstance(attr, dict):
-        attr = {}
-    for a in ATTRIBUTE:
-        st.session_state[f"attr_{a}"] = wuerfel_ok(attr.get(a))
-
-    # HP
-    hp = daten.get("hp", {})
-    if not isinstance(hp, dict):
-        hp = {}
-    maximum = hp.get("maximum")
-    if isinstance(maximum, int):
-        aktuell = hp.get("aktuell")
-        if not isinstance(aktuell, int):
-            aktuell = maximum
-        st.session_state["hp_max"] = maximum
-        st.session_state["hp_aktuell"] = max(0, min(aktuell, maximum))
-        st.session_state["hp_info"] = "aus Datei geladen"
-    else:
-        st.session_state["hp_max"] = None
-        st.session_state.pop("hp_aktuell", None)
-        st.session_state.pop("hp_info", None)
-
-    # Mana
-    mana = daten.get("mana", {})
-    if not isinstance(mana, dict):
-        mana = {}
-    st.session_state["mana_name"] = mana.get("name", "")
-    prozent = mana.get("prozent")
-    st.session_state["mana_wert"] = (
-        max(0, min(prozent, 100)) if isinstance(prozent, int) else 100
-    )
-
-    # Talente
-    talente = daten.get("talente", [])
-    if not isinstance(talente, list):
-        talente = []
-    for i in range(ANZAHL_TALENTE):
-        eintrag = talente[i] if i < len(talente) and isinstance(talente[i], dict) else {}
-        st.session_state[f"talent_name_{i}"] = eintrag.get("name", "")
-        st.session_state[f"talent_wuerfel_{i}"] = wuerfel_ok(eintrag.get("wuerfel"))
+def df_zu_inventar(df):
+    eintraege = []
+    for _, zeile in df.iterrows():
+        gegenstand = str(zeile["Gegenstand"]).strip() if pd.notna(zeile["Gegenstand"]) else ""
+        if not gegenstand or gegenstand == "None":
+            continue
+        anzahl = int(zeile["Anzahl"]) if pd.notna(zeile["Anzahl"]) else 1
+        notiz = str(zeile["Notiz"]) if pd.notna(zeile["Notiz"]) else ""
+        eintraege.append({"Gegenstand": gegenstand, "Anzahl": anzahl,
+                          "Notiz": "" if notiz == "None" else notiz})
+    return eintraege
 
 
-def portrait_bytes(portrait):
-    if isinstance(portrait, str) and portrait.startswith(PNG_PREFIX):
-        try:
-            return base64.b64decode(portrait[len(PNG_PREFIX):])
-        except (binascii.Error, ValueError):
-            return None
+# ----- Bestätigungsdialog
+def bestaetigen(frage, schluessel):
+    """Zeigt Ja/Nein-Buttons. Gibt True (Ja), False (Nein) oder None (noch keine Antwort) zurück."""
+    st.warning(frage)
+    ja, nein, _ = st.columns([1, 1, 6])
+    if ja.button("✅ Ja", key=f"ja_{schluessel}"):
+        st.session_state.pop("bestaetigung", None)
+        return True
+    if nein.button("❌ Nein", key=f"nein_{schluessel}"):
+        st.session_state.pop("bestaetigung", None)
+        st.rerun()
     return None
 
 
-# --- Callbacks ---
-def in_historie(name, wuerfel, ergebnis):
-    historie = st.session_state["historie"]
-    historie.append({
-        "zeit": datetime.now().strftime("%H:%M:%S"),
-        "name": name,
-        "wuerfel": wuerfel,
-        "ergebnis": ergebnis,
-    })
-    del historie[:-MAX_HISTORIE]
-
-
-def wuerfeln(name, wuerfel):
-    ergebnis = random.randint(1, int(wuerfel[1:]))
-    in_historie(name, wuerfel, ergebnis)
-    st.toast(f"{name} ({wuerfel}): {ergebnis}", icon="🎲")
-
-
-def historie_leeren():
-    st.session_state["historie"] = []
-
-
-def hp_wuerfeln():
-    wuerfel = st.session_state.get("attr_Konstitution")
-    if wuerfel is None:
-        return
-    seiten = int(wuerfel[1:])           # "W8" -> 8
-    stufe = OPTIONS.index(wuerfel) + 1  # W4 = 1, W6 = 2, ... W12 = 5
-    wurf = random.randint(1, seiten)
-    maximum = wurf + stufe
-    st.session_state["hp_max"] = maximum
-    st.session_state["hp_aktuell"] = maximum
-    st.session_state["hp_info"] = f"{wuerfel}: gewürfelt {wurf} + Stufe {stufe}"
-    in_historie("HP-Maximum", wuerfel, wurf)
-
-
-def hp_zuruecksetzen():
-    st.session_state["hp_max"] = None
-    st.session_state.pop("hp_aktuell", None)
-    st.session_state.pop("hp_info", None)
-
-
-def json_laden():
-    datei = st.session_state.get("json_upload")
-    if datei is None:
-        return
-    try:
-        daten = json.load(datei)
-    except (json.JSONDecodeError, UnicodeDecodeError):
-        st.session_state["lade_status"] = ("error", "Die Datei ist kein gültiges JSON.")
-        return
-    if not isinstance(daten, dict):
-        st.session_state["lade_status"] = ("error", "Unerwartetes Dateiformat.")
-        return
-    bogen_in_state(daten)
-    st.session_state["lade_status"] = ("success", "Charakterbogen geladen.")
-
-
-# =============================================================== SIDEBAR
-
-def sidebar_datenbank_upload():
-    st.sidebar.divider()
-    st.sidebar.subheader("Datenbank")
-    datei = st.sidebar.file_uploader("Bestehende Datenbank laden (.db)", type=["db"],
-                                     key="db_upload")
-    if datei is not None and st.sidebar.button("📂 Datenbank laden"):
-        ok, meldung = datenbank_einspielen(datei.getvalue())
-        if ok:
-            st.session_state["geladen_fuer"] = None  # Bogen neu aus der DB laden
-            st.session_state["meldung"] = meldung
-            st.rerun()
-        else:
-            st.sidebar.error(meldung)
-
-
-# =============================================================== SEITE: CHARAKTERBOGEN
-
-def seite_charakterbogen():
-    # Startwerte (nur beim ersten Aufruf)
-    for a in ATTRIBUTE:
-        st.session_state.setdefault(f"attr_{a}", "W4")
-    st.session_state.setdefault("mana_wert", 100)
-    st.session_state.setdefault("historie", [])
-    st.session_state.setdefault("portrait_data", None)
-    st.session_state.setdefault("portrait_version", 0)
-
-    st.title("Charakterbogen")
-    st.markdown("**Miniregelwerk**")
-
-    # --- Spieler & Charakterauswahl (Sidebar) ---
-    spieler = st.sidebar.text_input("Dein Spielername", key="spieler").strip()
-    if not spieler:
-        st.info("Gib links deinen Spielernamen ein.")
-        return
-
-    optionen = [NEU] + charaktere_von_spieler(spieler)
-    if "auswahl_naechste" in st.session_state:
-        st.session_state["auswahl"] = st.session_state.pop("auswahl_naechste")
-    if st.session_state.get("auswahl") not in optionen:
-        st.session_state["auswahl"] = NEU
-    auswahl = st.sidebar.selectbox("Charakter", optionen, key="auswahl")
-
-    # Bei Wechsel von Spieler/Charakter den Bogen in die Widgets laden
-    ziel = (spieler, auswahl)
-    if st.session_state.get("geladen_fuer") != ziel:
-        if auswahl == NEU:
-            bogen_in_state(leerer_bogen())
-        else:
-            bogen_in_state(charakter_laden(spieler, auswahl) or leerer_bogen(),
-                           fallback_name=auswahl)
-        st.session_state["geladen_fuer"] = ziel
-
-    # --- Charakter ---
-    links, rechts = st.columns([3, 1], vertical_alignment="center")
-    with links:
-        char_name = st.text_input(
-            "Name", key="char_name", placeholder="Name", label_visibility="collapsed"
-        )
-    with rechts:
-        char_alter = st.number_input(
-            "Alter",
-            min_value=0,
-            max_value=999,
-            step=1,
-            value=None,
-            key="char_alter",
-            placeholder="Alter",
-            label_visibility="collapsed",
-        )
-    char_aussehen = st.text_input(
-        "Aussehen", key="char_aussehen", placeholder="Aussehen", label_visibility="collapsed"
+# ----- Handout-Anzeige
+def pdf_anzeigen(daten):
+    b64 = base64.b64encode(daten).decode()
+    components.html(
+        f"""
+        <iframe id="pdf" style="width:100%;height:780px;border:0"></iframe>
+        <script>
+        const bin = atob("{b64}");
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        const url = URL.createObjectURL(new Blob([bytes], {{type: "application/pdf"}}));
+        document.getElementById("pdf").src = url + "#toolbar=0&navpanes=0";
+        </script>
+        """,
+        height=800,
     )
 
-    # --- Charakterportrait (Canvas) ---
-    with st.expander("Charakterportrait", expanded=True):
-        portrait_neu = portrait_komponente(
-            initial=st.session_state["portrait_data"],
-            key=f"portrait_{st.session_state['portrait_version']}",
-            default=None,
-        )
 
-    if portrait_neu is not None:
-        st.session_state["portrait_data"] = portrait_neu or None  # "" = leer
-    portrait_data = st.session_state["portrait_data"]
-
-    # --- HP ---
-    st.header("HP")
-
-    konstitution = st.session_state.get("attr_Konstitution")
-    hp_max = st.session_state.get("hp_max")
-
-    with st.container(key="hp_button"):
-        c1, c2, _ = st.columns([1, 1, 1], vertical_alignment="center")
-        with c1:
-            st.button(
-                "🎲 HP würfeln",
-                on_click=hp_wuerfeln,
-                disabled=konstitution is None or hp_max is not None,
-            )
-        with c2:
-            if hp_max is not None:
-                st.button("↺ Zurücksetzen", on_click=hp_zuruecksetzen)
-
-    if konstitution is None and hp_max is None:
-        st.caption("Wähle zuerst einen Würfel für Konstitution.")
-
-    if hp_max is None:
-        hp_aktuell = None
+def handout_anzeigen(h, titel_zeigen=False):
+    if titel_zeigen:
+        st.subheader(h["titel"])
+    if h["typ"] == "bild":
+        st.image(bytes(h["daten"]), use_container_width=True)
+    elif h["typ"] == "pdf":
+        pdf_anzeigen(bytes(h["daten"]))
     else:
-        st.caption(st.session_state.get("hp_info", "") + f" = {hp_max} HP maximal")
-        hp_aktuell = st.slider(
-            "Aktuelle HP",
-            min_value=0,
-            max_value=hp_max,
-            key="hp_aktuell",
-        )
+        text = bytes(h["daten"]).decode("utf-8", errors="replace")
+        if h["dateiname"].lower().endswith(".md"):
+            st.markdown(text)
+        else:
+            st.text(text)
 
-    # --- Mana / Ressource ---
-    st.header("Ressource")
 
-    links, rechts = st.columns([1, 2], vertical_alignment="center")
-    with links:
-        mana_name = st.text_input(
-            "Name der Ressource",
-            key="mana_name",
-            placeholder="z. B. Mana",
-            label_visibility="collapsed",
-        )
-    with rechts:
-        mana_wert = st.slider(
-            mana_name or "Ressource",
-            min_value=0,
-            max_value=100,
-            key="mana_wert",
-            format="%d%%",
-            label_visibility="collapsed",
-        )
+# =============================================================================
+# 4. SPIELER-BEREICH
+# =============================================================================
 
-    # --- Würfelhistorie ---
-    st.header("Würfelhistorie")
+# ----- 4a. Seite: Charakterbogen (neu erstellen / aus Datenbank laden)
+def seite_charakterbogen(aktion, spieler):
+    st.title("🎲 Charakterbogen")
+    if "meldung" in st.session_state:
+        st.success(st.session_state.pop("meldung"))
+    zaehler = st.session_state.get("lade_zaehler", 0)
 
-    historie = st.session_state["historie"]
-    with st.container(height=150, border=True):
-        if not historie:
-            st.caption("Noch nicht gewürfelt.")
-        for eintrag in reversed(historie):
-            st.write(
-                f"`{eintrag.get('zeit', '--:--:--')}` · "
-                f"**{eintrag['ergebnis']}** · {eintrag['name']} ({eintrag['wuerfel']})"
-            )
+    if aktion == AKTION_NEU:
+        if not spieler:
+            st.info("Gib links deinen Spielernamen ein, um einen neuen Charakter zu erstellen.")
+            return
+        besitzer, auswahl = spieler, NEU
+        bogen = leerer_bogen()
+    else:
+        alle = alle_charaktere()
+        if not alle:
+            st.warning("Die Datenbank ist leer – es gibt noch keine gespeicherten Charaktere.")
+            return
+        labels = [f"{c['spieler']} – {c['name']}" for c in alle]
+        if st.session_state.get("auswahl_db") not in labels:
+            st.session_state["auswahl_db"] = labels[0]
+        wahl = st.sidebar.selectbox("Charakter suchen (Tippen zum Filtern)",
+                                    labels, key="auswahl_db")
+        if st.sidebar.button("📂 Laden"):
+            st.session_state["bestaetigung"] = ("laden", wahl)
+        if st.session_state.get("bestaetigung") == ("laden", wahl):
+            with st.sidebar:
+                antwort = bestaetigen(
+                    f"„{wahl}“ wirklich laden? Nicht gespeicherte Änderungen gehen verloren.",
+                    "laden")
+            if antwort:
+                st.session_state["geladen"] = wahl
+                st.session_state["lade_zaehler"] = zaehler + 1
+                st.rerun()
 
-    with st.container(key="hist_button"):
-        st.button("Historie leeren", on_click=historie_leeren, disabled=not historie)
+        geladen = st.session_state.get("geladen")
+        if geladen not in labels:
+            st.info("Wähle links einen Charakter aus und klicke auf „Laden“.")
+            return
+        eintrag = alle[labels.index(geladen)]
+        besitzer, auswahl = eintrag["spieler"], eintrag["name"]
+        bogen = charakter_laden(besitzer, auswahl) or leerer_bogen()
 
-    # --- Attribute ---
-    st.header("Attribute")
+    k = f"{besitzer}|{auswahl}|{zaehler}"
 
-    attribute_werte = {}
+    st.subheader("Grunddaten")
+    c1, c2, c3, c4 = st.columns([3, 2, 2, 1])
+    name = c1.text_input("Name", value=bogen["name"], key=f"name_{k}")
+    klasse = c2.text_input("Klasse / Beruf", value=bogen.get("klasse", ""), key=f"klasse_{k}")
+    rasse = c3.text_input("Rasse / Herkunft", value=bogen.get("rasse", ""), key=f"rasse_{k}")
+    stufe = c4.number_input("Stufe", 1, 30, int(bogen.get("stufe", 1)), key=f"stufe_{k}")
 
-    for i, attribut in enumerate(ATTRIBUTE):
-        links, mitte, rechts = st.columns([2, 5, 1], vertical_alignment="center")
-        with links:
-            st.write(attribut)
-        with mitte:
-            attribute_werte[attribut] = st.segmented_control(
-                attribut,
-                options=OPTIONS,
-                key=f"attr_{attribut}",
-                label_visibility="collapsed",
-            )
-        with rechts:
-            st.button(
-                "🎲",
-                key=f"wurf_attr_{i}",
-                on_click=wuerfeln,
-                args=(attribut, attribute_werte[attribut]),
-                disabled=attribute_werte[attribut] is None,
-            )
+    st.subheader("Attribute")
+    attribute = {}
+    for spalte, attr in zip(st.columns(len(ATTRIBUTE)), ATTRIBUTE):
+        attribute[attr] = spalte.number_input(
+            attr, 1, 30, int(bogen.get("attribute", {}).get(attr, 10)), key=f"attr_{attr}_{k}")
 
-    # --- Talente ---
-    st.header("Talente")
+    st.subheader("Lebenspunkte")
+    l1, l2, _ = st.columns([1, 1, 4])
+    lp_max = l1.number_input("LP max", 1, 999, int(bogen.get("lp_max", 10)), key=f"lpmax_{k}")
+    lp_aktuell = l2.number_input("LP aktuell", 0, 999, int(bogen.get("lp_aktuell", 10)), key=f"lp_{k}")
+    st.progress(min(lp_aktuell / lp_max, 1.0))
 
-    talente_werte = []
+    st.subheader("Inventar")
+    inv_df = st.data_editor(
+        inventar_zu_df(bogen.get("inventar", [])),
+        num_rows="dynamic", key=f"inv_{k}",
+        column_config={"Anzahl": st.column_config.NumberColumn("Anzahl", min_value=0, step=1)},
+    )
 
-    for i in range(ANZAHL_TALENTE):
-        links, mitte, rechts = st.columns([2, 5, 1], vertical_alignment="center")
-        with links:
-            talent_name = st.text_input(
-                f"Name {i + 1}",
-                key=f"talent_name_{i}",
-                placeholder="Talent",
-                label_visibility="collapsed",
-            )
-        with mitte:
-            talent_wuerfel = st.segmented_control(
-                f"Würfel {i + 1}",
-                options=OPTIONS,
-                key=f"talent_wuerfel_{i}",
-                label_visibility="collapsed",
-            )
-        with rechts:
-            st.button(
-                "🎲",
-                key=f"wurf_talent_{i}",
-                on_click=wuerfeln,
-                args=(talent_name or f"Talent {i + 1}", talent_wuerfel),
-                disabled=talent_wuerfel is None,
-            )
-        talente_werte.append({"name": talent_name, "wuerfel": talent_wuerfel})
+    st.subheader("Notizen")
+    notizen = st.text_area("Hintergrund, Ausrüstung, Ziele …", value=bogen.get("notizen", ""),
+                           height=150, key=f"notizen_{k}")
 
-    # --- Speichern / Laden ---
-    st.header("Speichern / Laden")
-
-    daten = {
-        "charakter": {
-            "name": char_name.strip(),
-            "alter": char_alter,
-            "aussehen": char_aussehen,
-        },
-        "portrait": portrait_data,
-        "attribute": attribute_werte,
-        "hp": {"aktuell": hp_aktuell, "maximum": hp_max},
-        "mana": {"name": mana_name, "prozent": mana_wert},
-        "talente": talente_werte,
+    aktueller_bogen = {
+        "name": name.strip(), "klasse": klasse.strip(), "rasse": rasse.strip(),
+        "stufe": int(stufe), "attribute": attribute,
+        "lp_max": int(lp_max), "lp_aktuell": int(lp_aktuell),
+        "inventar": df_zu_inventar(inv_df), "notizen": notizen,
     }
 
-    b1, b2, _ = st.columns([1, 1, 2])
-
-    if b1.button("💾 In Datenbank speichern", type="primary"):
-        neuer_name = daten["charakter"]["name"]
-        vorhandene = charaktere_von_spieler(spieler)
-        if not neuer_name:
+    b1, b2, b3, _ = st.columns([1, 1, 1, 4])
+    if b1.button("💾 Speichern", type="primary"):
+        if not aktueller_bogen["name"]:
             st.error("Bitte gib dem Charakter einen Namen.")
-        elif neuer_name in vorhandene and neuer_name != auswahl:
-            st.error(f"Du hast bereits einen Charakter namens „{neuer_name}“.")
         else:
-            charakter_speichern(spieler, neuer_name, daten)
-            # Beim Umbenennen den alten Eintrag entfernen
-            if auswahl != NEU and neuer_name != auswahl:
-                charakter_loeschen(spieler, auswahl)
-            st.session_state["auswahl_naechste"] = neuer_name
-            st.session_state["geladen_fuer"] = (spieler, neuer_name)  # Widgets sind schon aktuell
-            st.session_state["meldung"] = f"„{neuer_name}“ wurde gespeichert."
+            st.session_state["bestaetigung"] = ("speichern", k)
+    if auswahl != NEU and b2.button("🗑️ Löschen"):
+        st.session_state["bestaetigung"] = ("loeschen", k)
+
+    b3.download_button("⬇️ Als JSON",
+                       data=json.dumps(aktueller_bogen, ensure_ascii=False, indent=2),
+                       file_name=f"{aktueller_bogen['name'] or 'charakter'}.json",
+                       mime="application/json")
+
+    frage = st.session_state.get("bestaetigung")
+    if frage == ("speichern", k):
+        antwort = bestaetigen(
+            f"„{aktueller_bogen['name']}“ wirklich speichern?", "speichern")
+        if antwort and aktueller_bogen["name"]:
+            charakter_speichern(besitzer, aktueller_bogen)
+            # nach dem Speichern direkt in die Datenbank-Ansicht springen
+            st.session_state["springe_zu"] = f"{besitzer} – {aktueller_bogen['name']}"
+            st.session_state["meldung"] = f"„{aktueller_bogen['name']}“ wurde gespeichert."
+            st.rerun()
+    elif frage == ("loeschen", k):
+        antwort = bestaetigen(f"„{auswahl}“ wirklich löschen? Das lässt sich nicht rückgängig machen.",
+                              "loeschen")
+        if antwort:
+            charakter_loeschen(besitzer, auswahl)
+            st.session_state.pop("geladen", None)
+            st.session_state["meldung"] = f"„{auswahl}“ wurde gelöscht."
             st.rerun()
 
-    if auswahl != NEU and b2.button("🗑️ Löschen"):
-        charakter_loeschen(spieler, auswahl)
-        st.session_state["meldung"] = f"„{auswahl}“ wurde gelöscht."
-        st.rerun()
 
-    # Dateiname aus dem Charakternamen (unerlaubte Zeichen entfernen)
-    dateiname = re.sub(r'[\\/:*?"<>|]', "", char_name or "").strip()[:50]
-    if not dateiname:
-        dateiname = "charakterbogen"
-
-    st.download_button(
-        label="Charakterbogen als JSON herunterladen",
-        data=json.dumps(daten, ensure_ascii=False, indent=2),
-        file_name=f"{dateiname}.json",
-        mime="application/json",
-    )
-
-    with st.expander("Charakterbogen aus JSON laden"):
-        st.file_uploader(
-            "JSON-Datei auswählen",
-            type="json",
-            key="json_upload",
-            on_change=json_laden,
-        )
-        status = st.session_state.get("lade_status")
-        if status:
-            getattr(st, status[0])(status[1])
-
-
-# =============================================================== SEITE: SPIELLEITER
-
-def seite_spielleiter():
-    st.title("🧙 Spielleiter-Übersicht")
-
-    pw = st.sidebar.text_input("Spielleiter-Passwort", type="password")
-    if pw != GM_PASSWORT:
-        st.info("Bitte links das Spielleiter-Passwort eingeben.")
+# ----- 4b. Seite: Handouts ansehen (nur freigegebene)
+def seite_handouts():
+    st.title("📜 Handouts")
+    handouts = handouts_liste(nur_sichtbar=True)
+    if not handouts:
+        st.info("Der Spielleiter hat noch keine Handouts freigegeben.")
         return
+
+    namen = {h["id"]: h["titel"] for h in handouts}
+    if st.session_state.get("handout_wahl") not in namen:
+        st.session_state.pop("handout_wahl", None)
+    wahl = st.sidebar.selectbox("Handout", list(namen), format_func=namen.get,
+                                key="handout_wahl")
+    h = handout_laden(wahl)
+    if h:
+        handout_anzeigen(h)
+
+
+# =============================================================================
+# 5. SPIELLEITER-BEREICH (nur nach Login erreichbar)
+# =============================================================================
+
+# ----- 5a. Seite: Charaktere aller Spieler
+def seite_gm_charaktere():
+    st.title("🧙 Spielleiter: Charaktere")
 
     alle = alle_charaktere()
     if not alle:
         st.warning("Noch keine Charaktere gespeichert.")
-    else:
-        st.dataframe(pd.DataFrame(alle), hide_index=True)
+        return
 
-        st.subheader("Einzelnen Charakter ansehen")
-        namen = [f"{c['spieler']} – {c['name']}" for c in alle]
-        wahl = st.selectbox("Charakter", namen)
-        eintrag = alle[namen.index(wahl)]
-        bogen = charakter_laden(eintrag["spieler"], eintrag["name"])
-        if bogen:
-            char = bogen.get("charakter", {}) if isinstance(bogen.get("charakter"), dict) else {}
-            hp = bogen.get("hp", {}) if isinstance(bogen.get("hp"), dict) else {}
-            mana = bogen.get("mana", {}) if isinstance(bogen.get("mana"), dict) else {}
+    st.dataframe(pd.DataFrame(alle), hide_index=True)
 
-            a, b = st.columns(2)
-            with a:
-                titel = f"**{char.get('name') or eintrag['name']}**"
-                if char.get("alter") is not None:
-                    titel += f" · {char['alter']} Jahre"
-                st.markdown(titel)
-                if char.get("aussehen"):
-                    st.write(char["aussehen"])
-                if hp.get("maximum") is not None:
-                    st.metric("HP", f"{hp.get('aktuell', hp['maximum'])} / {hp['maximum']}")
-                st.write(f"**{mana.get('name') or 'Ressource'}:** {mana.get('prozent', 100)} %")
-            with b:
-                bild = portrait_bytes(bogen.get("portrait"))
-                if bild:
-                    st.image(bild, width=220)
-
+    st.subheader("Einzelnen Charakter ansehen")
+    namen = [f"{c['spieler']} – {c['name']}" for c in alle]
+    wahl = st.selectbox("Charakter", namen)
+    eintrag = alle[namen.index(wahl)]
+    bogen = charakter_laden(eintrag["spieler"], eintrag["name"])
+    if bogen:
+        if st.button("✏️ Im Charakterbogen öffnen"):
+            st.session_state["springe_zu"] = wahl
+            st.rerun()
+        a, b = st.columns(2)
+        with a:
+            st.markdown(f"**{bogen['name']}** · {bogen.get('rasse', '')} {bogen.get('klasse', '')} "
+                        f"· Stufe {bogen.get('stufe', 1)}")
+            st.metric("Lebenspunkte", f"{bogen.get('lp_aktuell', 0)} / {bogen.get('lp_max', 0)}")
             st.write("**Attribute**")
-            attr = bogen.get("attribute", {})
-            st.dataframe(
-                pd.DataFrame([{k: (v or "–") for k, v in attr.items()}]),
-                hide_index=True,
-            )
+            st.dataframe(pd.DataFrame([bogen.get("attribute", {})]), hide_index=True)
+        with b:
+            st.write("**Inventar**")
+            st.dataframe(inventar_zu_df(bogen.get("inventar", [])), hide_index=True)
+            st.write("**Notizen**")
+            st.write(bogen.get("notizen") or "–")
 
-            st.write("**Talente**")
-            talente = [t for t in bogen.get("talente", [])
-                       if isinstance(t, dict) and t.get("name")]
-            if talente:
-                st.dataframe(pd.DataFrame(talente), hide_index=True)
-            else:
-                st.write("–")
 
-    st.divider()
-    st.subheader("Backup")
+# ----- 5b. Seite: Handouts hochladen, freigeben, löschen
+def seite_gm_handouts():
+    st.title("🧙 Spielleiter: Handouts verwalten")
+
+    if "meldung" in st.session_state:
+        st.success(st.session_state.pop("meldung"))
+
+    zaehler = st.session_state.get("hd_zaehler", 0)
+    dateien = st.file_uploader(
+        "Dateien hochladen (Bilder, PDF, TXT, MD)",
+        type=list(HANDOUT_TYPEN), accept_multiple_files=True, key=f"hd_upload_{zaehler}",
+    )
+    sofort = st.checkbox("Sofort für Spieler sichtbar", value=False, key="hd_sofort")
+    if dateien and st.button("📤 Hochladen"):
+        for d in dateien:
+            endung = d.name.rsplit(".", 1)[-1].lower()
+            handout_speichern(Path(d.name).stem, d.name, HANDOUT_TYPEN[endung],
+                              d.getvalue(), sofort)
+        st.session_state["hd_zaehler"] = zaehler + 1  # leert den Uploader
+        st.session_state["meldung"] = f"{len(dateien)} Datei(en) hochgeladen."
+        st.rerun()
+
+    for h in handouts_liste(nur_sichtbar=False):
+        c1, c2, c3, c4 = st.columns([4, 2, 2, 1])
+        c1.write(f"**{h['titel']}** · {h['dateiname']}")
+        sichtbar = c2.toggle("Sichtbar", value=bool(h["sichtbar"]), key=f"hd_sicht_{h['id']}")
+        if sichtbar != bool(h["sichtbar"]):
+            handout_sichtbarkeit(h["id"], sichtbar)
+            st.rerun()
+        vorschau = c3.checkbox("Vorschau", key=f"hd_vor_{h['id']}")
+        if c4.button("🗑️", key=f"hd_del_{h['id']}"):
+            handout_loeschen(h["id"])
+            st.rerun()
+        if vorschau:
+            vollstaendig = handout_laden(h["id"])
+            if vollstaendig:
+                handout_anzeigen(vollstaendig, titel_zeigen=True)
+
+
+# ----- 5c. Seite: Backup
+def seite_gm_backup():
+    st.title("🧙 Spielleiter: Backup")
     if DB_PATH.exists():
         st.download_button("⬇️ Datenbank herunterladen", data=DB_PATH.read_bytes(),
                            file_name="charaktere_backup.db")
+    hochgeladen = st.file_uploader("Backup einspielen (.db)", type=["db"])
+    if hochgeladen is not None and st.button("Backup wiederherstellen"):
+        inhalt = hochgeladen.getvalue()
+        if inhalt.startswith(b"SQLite format 3"):
+            DB_PATH.write_bytes(inhalt)
+            init_db()
+            st.success("Backup eingespielt.")
+            st.rerun()
+        else:
+            st.error("Das ist keine gültige SQLite-Datei.")
 
 
-# =============================================================== START
+# =============================================================================
+# 6. SIDEBAR & NAVIGATION
+# =============================================================================
+def gm_abmelden():
+    st.session_state["gm_ok"] = False
+    st.session_state.pop("gm_pw", None)
 
-init_db()
 
-seite = st.sidebar.radio("Bereich", ["Charakterbogen", "Spielleiter"])
+def sidebar_spielername():
+    st.sidebar.title("🎲 PnP-Runde")
+    return st.sidebar.text_input("Dein Spielername", key="spieler").strip()
 
-if "meldung" in st.session_state:
-    st.success(st.session_state.pop("meldung"))
 
-if seite == "Charakterbogen":
-    seite_charakterbogen()
-else:
-    seite_spielleiter()
+def sidebar_gm_login():
+    """Login-Box für den Spielleiter. Gibt zurück, ob er angemeldet ist."""
+    with st.sidebar.expander("🔒 Spielleiter-Login"):
+        if st.session_state.get("gm_ok"):
+            st.success("Angemeldet")
+            st.button("Abmelden", on_click=gm_abmelden)
+        else:
+            pw = st.text_input("Passwort", type="password", key="gm_pw")
+            if pw and pw == GM_PASSWORT:
+                st.session_state["gm_ok"] = True
+                st.rerun()
+            elif pw:
+                st.error("Falsches Passwort.")
+    return bool(st.session_state.get("gm_ok"))
 
-sidebar_datenbank_upload()
+
+def sprung_verarbeiten():
+    """Nach dem Speichern bzw. aus der Spielleiter-Ansicht zum Charakter springen."""
+    if "springe_zu" in st.session_state:
+        ziel = st.session_state.pop("springe_zu")
+        st.session_state["aktion"] = AKTION_LADEN
+        st.session_state["auswahl_db"] = ziel
+        st.session_state["geladen"] = ziel
+        st.session_state["lade_zaehler"] = st.session_state.get("lade_zaehler", 0) + 1
+
+
+def sidebar_navigation(gm_ok):
+    """Menü: Spieler-Punkte immer, Spielleiter-Punkte nur nach Login."""
+    optionen = SPIELER_AKTIONEN + (GM_AKTIONEN if gm_ok else [])
+    if st.session_state.get("aktion") not in optionen:
+        st.session_state["aktion"] = AKTION_NEU
+    return st.sidebar.selectbox("Was möchtest du tun?", optionen, key="aktion")
+
+
+def sidebar_beispieldaten():
+    if not alle_charaktere():
+        if st.sidebar.button("🧪 Beispieldaten laden"):
+            beispieldaten_laden()
+            st.rerun()
+
+
+# =============================================================================
+# 7. START
+# =============================================================================
+GM_SEITEN = {
+    AKTION_GM_CHARAKTERE: seite_gm_charaktere,
+    AKTION_GM_HANDOUTS: seite_gm_handouts,
+    AKTION_GM_BACKUP: seite_gm_backup,
+}
+
+
+def main():
+    init_db()
+
+    # Sidebar
+    spieler = sidebar_spielername()
+    gm_ok = sidebar_gm_login()
+    sprung_verarbeiten()
+    aktion = sidebar_navigation(gm_ok)
+    sidebar_beispieldaten()
+    st.sidebar.divider()
+
+    # Spielleiter-Seiten ohne Login sperren
+    if aktion in GM_AKTIONEN and not gm_ok:
+        st.stop()
+
+    # Seite anzeigen
+    if aktion in GM_SEITEN:
+        GM_SEITEN[aktion]()
+    elif aktion == AKTION_HANDOUTS:
+        seite_handouts()
+    else:
+        seite_charakterbogen(aktion, spieler)
+
+
+main()
