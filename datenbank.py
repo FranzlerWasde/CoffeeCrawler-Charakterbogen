@@ -580,6 +580,8 @@ def leerer_bogen():
         "hp": {"aktuell": None, "maximum": None},
         "mana": {"name": "", "prozent": 100},
         "talente": [],
+        "inventar": "",
+        "notizen": "",
     }
 
 
@@ -640,6 +642,11 @@ def bogen_in_session(daten):
         eintrag = talente[i] if i < len(talente) and isinstance(talente[i], dict) else {}
         st.session_state[f"talent_name_{i}"] = eintrag.get("name", "")
         st.session_state[f"talent_wuerfel_{i}"] = wuerfel_ok(eintrag.get("wuerfel"))
+
+    # Inventar und Spielernotizen (Freitext)
+    for feld, key in (("inventar", "inventar_text"), ("notizen", "notizen_text")):
+        text = daten.get(feld, "")
+        st.session_state[key] = text if isinstance(text, str) else ""
 
 
 def bogen_state_vorbereiten():
@@ -1123,6 +1130,20 @@ def bogen_formular():
             )
         talente_werte.append({"name": name, "wuerfel": wuerfel})
 
+    # --- Inventar ---
+    st.header("Inventar")
+    inventar = st.text_area(
+        "Inventar", key="inventar_text", height=150,
+        placeholder="Gegenstände, Ausrüstung, Geld …", label_visibility="collapsed",
+    )
+
+    # --- Spielernotizen ---
+    st.header("Spielernotizen")
+    notizen = st.text_area(
+        "Spielernotizen", key="notizen_text", height=200,
+        placeholder="Hintergrund, Ziele, Notizen zur Runde …", label_visibility="collapsed",
+    )
+
     return {
         "charakter": {
             "setting": char_setting.strip(),
@@ -1135,6 +1156,8 @@ def bogen_formular():
         "hp": {"aktuell": hp_aktuell, "maximum": hp_max},
         "mana": {"name": mana_name, "prozent": mana_wert},
         "talente": talente_werte,
+        "inventar": inventar,
+        "notizen": notizen,
     }
 
 
@@ -1300,6 +1323,11 @@ def seite_gm_charaktere():
             )
         else:
             st.write("–")
+
+    st.text_area("Inventar", value=bogen.get("inventar") or "", height=150,
+                 disabled=True, key=f"gm_inventar_{wahl}")
+    st.text_area("Spielernotizen", value=bogen.get("notizen") or "", height=200,
+                 disabled=True, key=f"gm_notizen_{wahl}")
 
 
 # ----- 5b. Seite: Handouts hochladen, freigeben, löschen
