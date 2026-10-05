@@ -345,7 +345,7 @@ with st.sidebar:
         #    "💾 Speichern",
         #    on_click=charakter_lokal_speichern,
         #    use_container_width=True,
-        )
+       # )
     # with col_lokal_laden:
         # st.button(
            #  "📂 Laden",
