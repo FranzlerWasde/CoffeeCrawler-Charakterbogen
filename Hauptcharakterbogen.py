@@ -770,7 +770,7 @@ with tab_Talente_Attribute:
     with col_Talente:
         st.subheader("Talente")
         with st.container(key="Talente"):
-            col_wert, col_Talent = st.columns([3, 15], vertical_alignment="center")
+            col_wert, col_Talent = st.columns([1, 3], vertical_alignment="center")
 
             with col_wert:
                 for i in range(1, anzahl_talente + 1):
