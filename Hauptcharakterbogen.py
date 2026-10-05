@@ -102,6 +102,9 @@ for i in range(1, anzahl_tricks + 1):
 for key, wert in standard_werte.items():
     st.session_state.setdefault(key, wert)
 
+# Würfelhistorie initialisieren (wird nicht mit dem Charakter gespeichert)
+st.session_state.setdefault("wuerfel_historie", [])
+
 # Hotslots initialisieren (Anzahl ist dynamisch über st.session_state["Hotslots"])
 for i in range(st.session_state["Hotslots"]):
     st.session_state.setdefault(f"hotslot_auswahl_{i}", "")
@@ -264,21 +267,30 @@ WÜRFEL_SEITEN = {"": 0 ,"W4": 4, "W6": 6, "W8": 8, "W10": 10, "W12": 12, "W20":
 def würfel_würfeln(würfel):
     return random.randint(1, WÜRFEL_SEITEN[würfel])
 
-def diredare_aendern():
-    """Wertet die Eingabe im Diredare-Feld aus:
-    - Steht ein '+' oder '-' am Anfang -> zum aktuellen Wert dazurechnen/abziehen.
-    - Sonst -> Wert direkt übernehmen (überschreiben)."""
-    eingabe = st.session_state["diredare_eingabe"].strip()
-    if not eingabe:
-        return
-    try:
-        if eingabe[0] in "+-":
-            st.session_state["Diredare"] += int(eingabe)
-        else:
-            st.session_state["Diredare"] = int(eingabe)
-    except ValueError:
-        st.error("Bitte eine gültige Zahl eingeben (z.B. 50, +10, -5)")
-    st.session_state["diredare_eingabe"] = ""
+
+# ---------- Würfelhistorie ----------
+
+HISTORIE_MAX = 50
+
+
+def historie_eintragen(art, beschreibung, ergebnis):
+    """Fügt einen Wurf oben in die Würfelhistorie ein (neueste zuerst)."""
+    historie = st.session_state.setdefault("wuerfel_historie", [])
+    historie.insert(0, {
+        "zeit": time.strftime("%H:%M:%S"),
+        "art": art,
+        "beschreibung": beschreibung,
+        "ergebnis": ergebnis,
+    })
+    del historie[HISTORIE_MAX:]
+
+
+def historie_leeren():
+    st.session_state["wuerfel_historie"] = []
+
+
+# ---------- Probenwurf (W100, Unterwürfeln) ----------
+
 def probe_auswerten(zielwert, wurf):
     """Wertet einen W100-Probenwurf aus (Unterwürfeln).
     Reihenfolge ist wichtig: Kritischer Misserfolg > Kritischer Erfolg > Erfolg > Misserfolg."""
@@ -325,36 +337,60 @@ def probe_callback():
         "ergebnis": probe_auswerten(zielwert, wurf),
     }
 
+    historie_eintragen(
+        "Probe",
+        f"{st.session_state['letzte_probe']['beschreibung']} (Ziel {zielwert})",
+        f"{wurf} → {st.session_state['letzte_probe']['ergebnis']}",
+    )
+
+
+def diredare_aendern():
+    """Wertet die Eingabe im Diredare-Feld aus:
+    - Steht ein '+' oder '-' am Anfang -> zum aktuellen Wert dazurechnen/abziehen.
+    - Sonst -> Wert direkt übernehmen (überschreiben)."""
+    eingabe = st.session_state["diredare_eingabe"].strip()
+    if not eingabe:
+        return
+    try:
+        if eingabe[0] in "+-":
+            st.session_state["Diredare"] += int(eingabe)
+        else:
+            st.session_state["Diredare"] = int(eingabe)
+    except ValueError:
+        st.error("Bitte eine gültige Zahl eingeben (z.B. 50, +10, -5)")
+    st.session_state["diredare_eingabe"] = ""
+
+
 # endregion
 
 ################################## region 3. SIDEBAR
 
 with st.sidebar:
+    st.sidebar.header("Charakter")
 
+    st.header("📜 Regelwerk")
+    st.selectbox("Wähle das Regelwerk", options=["Standard", "Miniregelwerk"])
+    st.button("Regelwerk einsehen")
 
-    # st.header("📜 Regelwerk")
-    # st.selectbox("Wähle das Regelwerk", options=["Standard", "Miniregelwerk"])
-    # st.button("Regelwerk einsehen")
+    st.divider()
 
-    # st.divider()
+    st.subheader("Schnellspeichern (lokal)")
+    col_lokal_speichern, col_lokal_laden = st.columns(2)
+    with col_lokal_speichern:
+        st.button(
+            "💾 Speichern",
+            on_click=charakter_lokal_speichern,
+            use_container_width=True,
+        )
+    with col_lokal_laden:
+        st.button(
+            "📂 Laden",
+            on_click=charakter_lokal_laden,
+            use_container_width=True,
+        )
+    st.caption("Speichert lokal unter „gespeicherte_charaktere/“ – funktioniert nur, wenn die App lokal läuft.")
 
-    # st.subheader("Schnellspeichern (lokal)")
-    # col_lokal_speichern, col_lokal_laden = st.columns(2)
-    # with col_lokal_speichern:
-        # st.button(
-        #    "💾 Speichern",
-        #    on_click=charakter_lokal_speichern,
-        #    use_container_width=True,
-       # )
-    # with col_lokal_laden:
-        # st.button(
-           #  "📂 Laden",
-           #  on_click=charakter_lokal_laden,
-           #  use_container_width=True,
-        # )
-    # st.caption("Speichert lokal unter „gespeicherte_charaktere/“ – funktioniert nur, wenn die App lokal läuft.")
-
-    # st.divider()
+    st.divider()
 
     st.subheader("Charakter laden")
     st.file_uploader(
@@ -392,15 +428,20 @@ with st.sidebar:
 
         # 3. Würfeln-Button
         if st.button(f"Station  werfen ({anzahl}{typ})", key=f"btn"):
-            gesamt = 0
+            if seiten == 0:
+                st.warning("Bitte zuerst einen Würfel auswählen.")
+            else:
+                # So oft würfeln wie im Slider eingestellt
+                einzelwuerfe = [random.randint(1, seiten) for _ in range(anzahl)]
+                gesamt = sum(einzelwuerfe)
+                st.success(f"Ergebnis: {gesamt}")
 
-            # So oft würfeln wie im Slider eingestellt
-            for e in range(anzahl):
-                gesamt += random.randint(1, seiten)
+                detail = f" ({' + '.join(map(str, einzelwuerfe))})" if anzahl > 1 else ""
+                historie_eintragen("Würfel", f"{anzahl}{typ}", f"{gesamt}{detail}")
 
-            st.success(f"Ergebnis: {gesamt}")
     st.divider()
 
+    # ---------- Probenwurf ----------
     st.subheader("🎲 Probenwurf (W100)")
     st.selectbox("Attribut", ATTRIBUTE_LISTE, key="probe_attribut",
                  format_func=lambda a: f"{a} ({st.session_state[a]})")
@@ -416,12 +457,28 @@ with st.sidebar:
             f"Zielwert: **{p['zielwert']}** · Wurf: **{p['wurf']}**  \n"
             f"### {p['ergebnis']}"
         )
+
+    st.divider()
+
+    # ---------- Würfelhistorie ----------
+    with st.expander("📜 Würfelhistorie"):
+        historie = st.session_state.get("wuerfel_historie", [])
+        if not historie:
+            st.caption("Noch nichts gewürfelt.")
+        else:
+            for eintrag in historie:
+                st.markdown(
+                    f"`{eintrag['zeit']}` **{eintrag['art']}** · {eintrag['beschreibung']}  \n"
+                    f"→ {eintrag['ergebnis']}"
+                )
+            st.button("Historie leeren", on_click=historie_leeren, use_container_width=True)
+
 #endregion
 
 
 
 
-st.title("Coffeecrawler Pen and Paper Charakterbogen 📑")
+st.header("Coffeecrawler Pen and Paper Charakterbogen 📑")
 
 tab_Übersicht, tab_Charakter, tab_Talente_Attribute, tab_Skills, tab_Inventar, tab_Notizen, tab_sessionstate = st.tabs(
     ["Übersicht", "Charakter Details", "Attribute und Talente", "Skills und Tricks", "Inventar", "Notizen", "Sessionstate"],
@@ -538,7 +595,7 @@ with (((tab_Übersicht))):
 
             st.html(f'<p class=st-key-Talentwerte>{st.session_state["skill2"]}</p>')
 
-            st.button("Skil2 aktvieren", on_click=skill_aktivieren)
+            st.button("Skil2 aktvieren", on_click=skill_2_aktivieren)
 
         with st.expander("Tricks"):
 
