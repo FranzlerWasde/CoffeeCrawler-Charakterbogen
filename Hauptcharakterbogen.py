@@ -330,31 +330,31 @@ def probe_callback():
 ################################## region 3. SIDEBAR
 
 with st.sidebar:
-    st.sidebar.header("Charakter")
 
-    st.header("📜 Regelwerk")
-    st.selectbox("Wähle das Regelwerk", options=["Standard", "Miniregelwerk"])
-    st.button("Regelwerk einsehen")
 
-    st.divider()
+    # st.header("📜 Regelwerk")
+    # st.selectbox("Wähle das Regelwerk", options=["Standard", "Miniregelwerk"])
+    # st.button("Regelwerk einsehen")
 
-    st.subheader("Schnellspeichern (lokal)")
-    col_lokal_speichern, col_lokal_laden = st.columns(2)
-    with col_lokal_speichern:
-        st.button(
-            "💾 Speichern",
-            on_click=charakter_lokal_speichern,
-            use_container_width=True,
+    # st.divider()
+
+    # st.subheader("Schnellspeichern (lokal)")
+    # col_lokal_speichern, col_lokal_laden = st.columns(2)
+    # with col_lokal_speichern:
+        # st.button(
+        #    "💾 Speichern",
+        #    on_click=charakter_lokal_speichern,
+        #    use_container_width=True,
         )
-    with col_lokal_laden:
-        st.button(
-            "📂 Laden",
-            on_click=charakter_lokal_laden,
-            use_container_width=True,
-        )
-    st.caption("Speichert lokal unter „gespeicherte_charaktere/“ – funktioniert nur, wenn die App lokal läuft.")
+    # with col_lokal_laden:
+        # st.button(
+           #  "📂 Laden",
+           #  on_click=charakter_lokal_laden,
+           #  use_container_width=True,
+        # )
+    # st.caption("Speichert lokal unter „gespeicherte_charaktere/“ – funktioniert nur, wenn die App lokal läuft.")
 
-    st.divider()
+    # st.divider()
 
     st.subheader("Charakter laden")
     st.file_uploader(
@@ -421,7 +421,7 @@ with st.sidebar:
 
 
 
-st.header("Coffeecrawler Pen and Paper Charakterbogen 📑")
+st.title("Coffeecrawler Pen and Paper Charakterbogen 📑")
 
 tab_Übersicht, tab_Charakter, tab_Talente_Attribute, tab_Skills, tab_Inventar, tab_Notizen, tab_sessionstate = st.tabs(
     ["Übersicht", "Charakter Details", "Attribute und Talente", "Skills und Tricks", "Inventar", "Notizen", "Sessionstate"],
