@@ -279,7 +279,51 @@ def diredare_aendern():
     except ValueError:
         st.error("Bitte eine gültige Zahl eingeben (z.B. 50, +10, -5)")
     st.session_state["diredare_eingabe"] = ""
+def probe_auswerten(zielwert, wurf):
+    """Wertet einen W100-Probenwurf aus (Unterwürfeln).
+    Reihenfolge ist wichtig: Kritischer Misserfolg > Kritischer Erfolg > Erfolg > Misserfolg."""
+    if wurf == 100:
+        return "💀 Kritischer Misserfolg"
+    if wurf < zielwert * 0.05:
+        return "🌟 Kritischer Erfolg"
+    if wurf <= zielwert:
+        return "✅ Erfolg"
+    return "❌ Misserfolg"
 
+
+def talent_optionen():
+    """0 = kein Talent, sonst Nummern aller Talente, die einen Namen haben."""
+    return [0] + [
+        i for i in range(1, anzahl_talente + 1)
+        if st.session_state.get(f"Talent {i}", "").strip()
+    ]
+
+
+def talent_anzeigename(i):
+    if i == 0:
+        return "– kein Talent –"
+    return f"{st.session_state[f'Talent {i}']} (+{st.session_state[f'TalentWert {i}']})"
+
+
+def probe_callback():
+    """Berechnet den Zielwert, würfelt 1W100 und speichert das Ergebnis."""
+    attribut = st.session_state["probe_attribut"]
+    talent_nr = st.session_state["probe_talent"]
+    modifikator = st.session_state["probe_modifikator"]
+
+    zielwert = st.session_state[attribut] + modifikator
+    talent_text = ""
+    if talent_nr != 0:
+        zielwert += st.session_state[f"TalentWert {talent_nr}"]
+        talent_text = f" + {st.session_state[f'Talent {talent_nr}']}"
+
+    wurf = random.randint(1, 100)
+    st.session_state["letzte_probe"] = {
+        "beschreibung": f"{attribut}{talent_text}",
+        "zielwert": zielwert,
+        "wurf": wurf,
+        "ergebnis": probe_auswerten(zielwert, wurf),
+    }
 
 # endregion
 
@@ -355,7 +399,23 @@ with st.sidebar:
                 gesamt += random.randint(1, seiten)
 
             st.success(f"Ergebnis: {gesamt}")
+    st.divider()
 
+    st.subheader("🎲 Probenwurf (W100)")
+    st.selectbox("Attribut", ATTRIBUTE_LISTE, key="probe_attribut",
+                 format_func=lambda a: f"{a} ({st.session_state[a]})")
+    st.selectbox("Talent (optional)", talent_optionen(), key="probe_talent",
+                 format_func=talent_anzeigename)
+    st.number_input("Modifikator (+/-)", value=0, step=5, key="probe_modifikator")
+    st.button("Probe würfeln", on_click=probe_callback, use_container_width=True)
+
+    if "letzte_probe" in st.session_state:
+        p = st.session_state["letzte_probe"]
+        st.markdown(
+            f"**{p['beschreibung']}**  \n"
+            f"Zielwert: **{p['zielwert']}** · Wurf: **{p['wurf']}**  \n"
+            f"### {p['ergebnis']}"
+        )
 #endregion
 
 
