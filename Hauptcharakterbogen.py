@@ -539,7 +539,7 @@ with (((tab_Übersicht))):
                 st.html(f"Level: {st.session_state['Level']}")
                 st.divider()
                 for attr in ATTRIBUTE_LISTE:
-                    st.subheater(f"{attr}: {st.session_state[attr]}")
+                    st.html(f"*{attr}*: {st.session_state[attr]}")
 
             with col_Talente:
                 st.subheader("Talente")
