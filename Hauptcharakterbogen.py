@@ -127,6 +127,11 @@ if "Skillenergie" not in st.session_state:
 if "max_Skillenergie" not in st.session_state:
     st.session_state.max_Skillenergie = 20
 
+# Vorherige Werte von Level und Attributen merken: die on_change-Callbacks brauchen sie,
+# um die Differenz für die Steigerungspunkte zu berechnen (wird bei jedem Durchlauf aktualisiert)
+for _key in ["Level"] + ATTRIBUTE_LISTE:
+    st.session_state[f"_alt_{_key}"] = st.session_state[_key]
+
 
 #endregion
 
@@ -201,22 +206,17 @@ def charakter_lokal_laden():
         st.error(f"Fehler beim lokalen Laden: {e}")
 
 
-def attribut_aendern(attribut, delta):
-    """Erhöht/verringert ein Attribut um delta und passt die Steigerungspunkte an."""
-    st.session_state[attribut] += delta
+def attribut_geaendert(attribut):
+    """Passt die Steigerungspunkte an, wenn ein Attribut per Number-Input geändert wurde."""
+    delta = st.session_state[attribut] - st.session_state[f"_alt_{attribut}"]
     st.session_state["Steigerungspunkte"] -= 2 * delta
 
 
-def level_erhoehen():
-    st.session_state["Level"] += 1
-    st.session_state["Steigerungspunkte"] += 4
-    st.session_state.Lebenspunkte += 3
-
-
-def level_weniger():
-    st.session_state["Level"] -= 1
-    st.session_state["Steigerungspunkte"] -= 4
-    st.session_state.Lebenspunkte -= 3
+def level_geaendert():
+    """Passt Steigerungspunkte und Lebenspunkte an, wenn das Level per Number-Input geändert wurde."""
+    delta = st.session_state["Level"] - st.session_state["_alt_Level"]
+    st.session_state["Steigerungspunkte"] += 4 * delta
+    st.session_state.Lebenspunkte += 3 * delta
 
 
 def kampftalent_erhoehen(i):
@@ -228,13 +228,6 @@ def kampftalent_verringern(i):
     st.session_state[f"kampftalentemenge {i}"] -= 1
     st.session_state["Steigerungspunkte"] += 2
 
-def skillenergie_plus():
-    st.session_state.Skillenergie += 1
-def skillenergie_minus():
-    st.session_state.Skillenergie -= 1
-
-def max_Skillenergie_plus():
-    st.session_state.max_Skillenergie += 1
 def skill_aktivieren():
     st.session_state.Skillenergie -= st.session_state.skill_1_kosten
     if st.session_state.Skillenergie <= -1:
@@ -563,14 +556,7 @@ with (((tab_Übersicht))):
                     st.html(f'<p class=st-key-Talentwerte>{d}</p>')
 
         with st.expander("Skills"):
-            st.slider("Skillenergie", min_value=0, max_value=st.session_state.max_Skillenergie,
-                      value=st.session_state.Skillenergie, key= "Skillenergie")
-            Skillenerige_Minus, Skillenergie_Plus, _ = st.columns([1, 1, 3])
-            with Skillenergie_Plus:
-                st.button("+1", on_click=skillenergie_plus,
-                          disabled=(st.session_state.Skillenergie == st.session_state.max_Skillenergie))
-            with Skillenerige_Minus:
-                st.button("-1", on_click=skillenergie_minus)
+            st.number_input("Skillenergie", key="Skillenergie", max_value=st.session_state.max_Skillenergie, step=1)
 
 
 
@@ -614,26 +600,8 @@ with (((tab_Übersicht))):
 
         with st.container(border=True):
 
-            def hp_einsup():
-                st.session_state.Lebenspunkte += 1
-            def hp_fünfup():
-                st.session_state.Lebenspunkte += 5
-            def hp_einsdown():
-                st.session_state.Lebenspunkte -= 1
-            def hp_fünfdown():
-                st.session_state.Lebenspunkte -= 5
-
             st.subheader("Lebenspunkte")
-            col_Lebenspunkte, col_LP_up, col_Lp_down = st.columns(3)
-            with col_Lebenspunkte:
-                st.header(st.session_state.Lebenspunkte)
-            with col_LP_up:
-                st.button("LP+1", on_click=hp_einsup)
-                st.button("LP+5", on_click=hp_fünfup)
-            with col_Lp_down:
-                st.button("LP-1", on_click=hp_einsdown)
-                st.button("LP-5", on_click=hp_fünfdown)
-
+            st.number_input("Lebenspunkte", key="Lebenspunkte", step=1, label_visibility="collapsed")
 
         with st.container(border=True):
             st.subheader("Zähler")
@@ -744,25 +712,13 @@ with tab_Talente_Attribute:
     with col_Attribute:
         with st.container(key="Attributswerte2"):
             st.subheader("Level")
-            with st.container(horizontal=True):
-                st.button("Level +1", on_click=level_erhoehen, use_container_width=True)
-                st.html(f"Level: {st.session_state['Level']}")
-                st.button("Level -1", on_click=level_weniger, use_container_width=True)
+            st.number_input("Level", key="Level", step=1, on_change=level_geaendert, label_visibility="collapsed")
 
             st.divider()
             st.subheader("Attribute")
 
             for attr in ATTRIBUTE_LISTE:
-                with st.container(horizontal=True):
-                    st.button(
-                        f"{attr} +1", key=f"btn_{attr}_plus", on_click=attribut_aendern,
-                        args=(attr, 1), use_container_width=True
-                    )
-                    st.html(f"{attr}: {st.session_state[attr]}")
-                    st.button(
-                        f"{attr} -1", key=f"btn_{attr}_minus", on_click=attribut_aendern,
-                        args=(attr, -1), use_container_width=True
-                    )
+                st.number_input(attr, key=attr, step=1, on_change=attribut_geaendert, args=(attr,))
 
             st.space()
             #st.html(f"Steigerungspunkte: {st.session_state['Steigerungspunkte']}")
@@ -770,7 +726,7 @@ with tab_Talente_Attribute:
     with col_Talente:
         st.subheader("Talente")
         with st.container(key="Talente"):
-            col_wert, col_Talent = st.columns([1, 3], vertical_alignment="center")
+            col_wert, col_Talent = st.columns([3, 15], vertical_alignment="center")
 
             with col_wert:
                 for i in range(1, anzahl_talente + 1):
@@ -785,26 +741,9 @@ with tab_Talente_Attribute:
                     st.text_input(f"{talent_wert_key}:", key=talent_wert_key, label_visibility="collapsed")
 
             st.subheader("Maximale Hotslots")
+            st.number_input("Maximale Hotslots", key="Hotslots", min_value=0, step=1, label_visibility="collapsed")
 
-            def Hotslot_up():
-                st.session_state["Hotslots"] += 1
-            def Hotslot_down():
-                st.session_state["Hotslots"] -= 1
-
-            col_Hotslot, col_Hotslot_minus ,col_Hotslot_plus, col_Hotslot_Abstand = st.columns([2,1,1,2])
-            with col_Hotslot:
-                st.html(f'<p class=st-key-Talentwerte>Maximale Hotslots: {st.session_state['Hotslots']}</p>')
-            with col_Hotslot_plus:
-                st.button("+1 Hotslot", on_click=Hotslot_up)
-            with col_Hotslot_minus:
-                st.button("-1 Hotslot", on_click=Hotslot_down)
-
-            col_Skillenergie, col_man_Skillenergie = st.columns(2)
-
-            with col_Skillenergie:
-                st.html(f'<p class=st-key-Talentwerte>Maximale Skillenergie: {st.session_state['max_Skillenergie']}</p>')
-            with col_man_Skillenergie:
-                st.button("Max Skillenergie +1", on_click=max_Skillenergie_plus)
+            st.number_input("Maximale Skillenergie", key="max_Skillenergie", min_value=0, step=1)
 
 
         with col_Kampf:
