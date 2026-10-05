@@ -27,7 +27,6 @@ standard_werte = {
     "Erster Eindruck": "",
     "Level": 1,
     "Lebenspunkte": 43,
-    "max_Lebenspunkte": 43,
     "Charisma": 40,
     "Manipulation": 40,
     "Erscheinung": 40,
@@ -134,9 +133,13 @@ if "max_Skillenergie" not in st.session_state:
 for _key in ["Level"] + ATTRIBUTE_LISTE:
     st.session_state[f"_alt_{_key}"] = st.session_state[_key]
 
-# Lebenspunkte bleiben im Bereich des Sliders: nie unter 0, und wird das Maximum überschritten, wächst es mit
-st.session_state.max_Lebenspunkte = max(st.session_state.max_Lebenspunkte, st.session_state.Lebenspunkte)
-st.session_state.Lebenspunkte = max(0, st.session_state.Lebenspunkte)
+def max_lebenspunkte():
+    """Maximale Lebenspunkte: Konstitution + 3x Level."""
+    return st.session_state["Konstitution"] + 3 * st.session_state["Level"]
+
+
+# Lebenspunkte bleiben im Bereich des Sliders (0 bis Maximum)
+st.session_state.Lebenspunkte = max(0, min(st.session_state.Lebenspunkte, max_lebenspunkte()))
 
 
 #endregion
@@ -223,12 +226,6 @@ def level_geaendert():
     delta = st.session_state["Level"] - st.session_state["_alt_Level"]
     st.session_state["Steigerungspunkte"] += 4 * delta
     st.session_state.Lebenspunkte += 3 * delta
-    st.session_state.max_Lebenspunkte += 3 * delta
-
-
-def max_lebenspunkte_geaendert():
-    """Wird das Maximum unter den aktuellen Stand gesenkt, sinken die Lebenspunkte mit."""
-    st.session_state.Lebenspunkte = min(st.session_state.Lebenspunkte, st.session_state.max_Lebenspunkte)
 
 
 def lebenspunkte_rechnen():
@@ -640,7 +637,8 @@ with (((tab_Übersicht))):
         with st.container(border=True):
 
             st.subheader("Lebenspunkte")
-            st.slider("Lebenspunkte", min_value=0, max_value=st.session_state.max_Lebenspunkte,
+            st.header(f"{st.session_state.Lebenspunkte} / {max_lebenspunkte()}")
+            st.slider("Lebenspunkte", min_value=0, max_value=max_lebenspunkte(),
                       key="Lebenspunkte", label_visibility="collapsed")
             st.text_input("Lebenspunkte rechnen", key="lp_eingabe", on_change=lebenspunkte_rechnen,
                           placeholder="LP ändern: +10 / -5", label_visibility="collapsed")
@@ -791,9 +789,6 @@ with tab_Talente_Attribute:
                 st.html(f'<p class=st-key-Talentwerte>Maximale Skillenergie: {st.session_state['max_Skillenergie']}</p>')
             with col_man_Skillenergie:
                 st.button("Max Skillenergie +1", on_click=max_Skillenergie_plus)
-
-            st.number_input("Maximale Lebenspunkte", key="max_Lebenspunkte", min_value=1, step=1,
-                            on_change=max_lebenspunkte_geaendert)
 
 
         with col_Kampf:
