@@ -11,7 +11,7 @@ import streamlit as st
 
 
 st.set_page_config(layout="wide", page_title="Coffeecrawler Charakterbogen", page_icon="CoffeCrawler.jpg")
-st.html(Path(__file__).parent / "styles.css")
+# st.html(Path(__file__).parent / "styles.css")
 
 
 
