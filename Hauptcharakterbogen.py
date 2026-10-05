@@ -766,19 +766,20 @@ with tab_Talente_Attribute:
     with col_Talente:
         st.subheader("Talente")
         with st.container(key="Talente"):
-            col_wert, col_Talent = st.columns([3, 15], vertical_alignment="center")
+            with st.container(key="Talentzeilen"):
+                col_wert, col_Talent = st.columns([3, 15], vertical_alignment="center")
 
-            with col_wert:
-                for i in range(1, anzahl_talente + 1):
-                    st.number_input(
-                        f"TalentWert {i}:", key=f"TalentWert {i}",
-                        min_value=0, step=1, label_visibility="collapsed",
-                    )
+                with col_wert:
+                    for i in range(1, anzahl_talente + 1):
+                        st.number_input(
+                            f"TalentWert {i}:", key=f"TalentWert {i}",
+                            min_value=0, step=1, label_visibility="collapsed",
+                        )
 
-            with col_Talent:
-                for i in range(1, anzahl_talente + 1):
-                    talent_wert_key = f"Talent {i}"
-                    st.text_input(f"{talent_wert_key}:", key=talent_wert_key, label_visibility="collapsed")
+                with col_Talent:
+                    for i in range(1, anzahl_talente + 1):
+                        talent_wert_key = f"Talent {i}"
+                        st.text_input(f"{talent_wert_key}:", key=talent_wert_key, label_visibility="collapsed")
 
             st.subheader("Maximale Hotslots")
             st.number_input("Maximale Hotslots", key="Hotslots", min_value=0, step=1, label_visibility="collapsed")
