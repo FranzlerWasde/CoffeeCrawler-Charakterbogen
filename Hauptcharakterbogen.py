@@ -361,7 +361,7 @@ with st.sidebar:
 
 
 
-st.html('<p id="mein_mittelalter_header"> Coffeecrawler Pen and Paper Charakterbogen 📑</p>')
+st.header("Coffeecrawler Pen and Paper Charakterbogen 📑")
 
 tab_Übersicht, tab_Charakter, tab_Talente_Attribute, tab_Skills, tab_Inventar, tab_Notizen, tab_sessionstate = st.tabs(
     ["Übersicht", "Charakter Details", "Attribute und Talente", "Skills und Tricks", "Inventar", "Notizen", "Sessionstate"],
