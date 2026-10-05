@@ -486,6 +486,7 @@ with st.sidebar:
 
 
 st.header("Coffeecrawler Pen and Paper Charakterbogen 📑")
+st.info("todo: BW Rüstungsklasse und Trefferchace einfügen")
 
 tab_Übersicht, tab_Charakter, tab_Talente_Attribute, tab_Skills, tab_Inventar, tab_Notizen, tab_sessionstate = st.tabs(
     ["Übersicht", "Charakter Details", "Attribute und Talente", "Skills und Tricks", "Inventar", "Notizen", "Sessionstate"],
