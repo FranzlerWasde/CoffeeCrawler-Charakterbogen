@@ -2,6 +2,7 @@ import random
 import base64
 import json
 import os
+import re
 import time
 from pathlib import Path
 
@@ -26,6 +27,7 @@ standard_werte = {
     "Erster Eindruck": "",
     "Level": 1,
     "Lebenspunkte": 43,
+    "max_Lebenspunkte": 43,
     "Charisma": 40,
     "Manipulation": 40,
     "Erscheinung": 40,
@@ -132,6 +134,10 @@ if "max_Skillenergie" not in st.session_state:
 for _key in ["Level"] + ATTRIBUTE_LISTE:
     st.session_state[f"_alt_{_key}"] = st.session_state[_key]
 
+# Lebenspunkte bleiben im Bereich des Sliders: nie unter 0, und wird das Maximum überschritten, wächst es mit
+st.session_state.max_Lebenspunkte = max(st.session_state.max_Lebenspunkte, st.session_state.Lebenspunkte)
+st.session_state.Lebenspunkte = max(0, st.session_state.Lebenspunkte)
+
 
 #endregion
 
@@ -217,6 +223,25 @@ def level_geaendert():
     delta = st.session_state["Level"] - st.session_state["_alt_Level"]
     st.session_state["Steigerungspunkte"] += 4 * delta
     st.session_state.Lebenspunkte += 3 * delta
+    st.session_state.max_Lebenspunkte += 3 * delta
+
+
+def max_lebenspunkte_geaendert():
+    """Wird das Maximum unter den aktuellen Stand gesenkt, sinken die Lebenspunkte mit."""
+    st.session_state.Lebenspunkte = min(st.session_state.Lebenspunkte, st.session_state.max_Lebenspunkte)
+
+
+def lebenspunkte_rechnen():
+    """Rechnet die Eingabe auf den aktuellen Lebenspunktestand.
+    Erlaubt sind Summen aus ganzen Zahlen, z.B. '10' / '+10' (addieren), '-5' (abziehen), '10-3+2'."""
+    eingabe = st.session_state["lp_eingabe"].replace(" ", "")
+    st.session_state["lp_eingabe"] = ""
+    if not eingabe:
+        return
+    if not re.fullmatch(r"[+-]?\d+([+-]\d+)*", eingabe):
+        st.toast("Bitte eine gültige Rechnung eingeben (z.B. +10, -5, 10-3)", icon="⚠️")
+        return
+    st.session_state.Lebenspunkte += sum(int(zahl) for zahl in re.findall(r"[+-]?\d+", eingabe))
 
 
 def kampftalent_erhoehen(i):
@@ -228,6 +253,13 @@ def kampftalent_verringern(i):
     st.session_state[f"kampftalentemenge {i}"] -= 1
     st.session_state["Steigerungspunkte"] += 2
 
+def skillenergie_plus():
+    st.session_state.Skillenergie += 1
+def skillenergie_minus():
+    st.session_state.Skillenergie -= 1
+
+def max_Skillenergie_plus():
+    st.session_state.max_Skillenergie += 1
 def skill_aktivieren():
     st.session_state.Skillenergie -= st.session_state.skill_1_kosten
     if st.session_state.Skillenergie <= -1:
@@ -556,7 +588,14 @@ with (((tab_Übersicht))):
                     st.html(f'<p class=st-key-Talentwerte>{d}</p>')
 
         with st.expander("Skills"):
-            st.number_input("Skillenergie", key="Skillenergie", max_value=st.session_state.max_Skillenergie, step=1)
+            st.slider("Skillenergie", min_value=0, max_value=st.session_state.max_Skillenergie,
+                      value=st.session_state.Skillenergie, key= "Skillenergie")
+            Skillenerige_Minus, Skillenergie_Plus, _ = st.columns([1, 1, 3])
+            with Skillenergie_Plus:
+                st.button("+1", on_click=skillenergie_plus,
+                          disabled=(st.session_state.Skillenergie == st.session_state.max_Skillenergie))
+            with Skillenerige_Minus:
+                st.button("-1", on_click=skillenergie_minus)
 
 
 
@@ -601,7 +640,10 @@ with (((tab_Übersicht))):
         with st.container(border=True):
 
             st.subheader("Lebenspunkte")
-            st.number_input("Lebenspunkte", key="Lebenspunkte", step=1, label_visibility="collapsed")
+            st.slider("Lebenspunkte", min_value=0, max_value=st.session_state.max_Lebenspunkte,
+                      key="Lebenspunkte", label_visibility="collapsed")
+            st.text_input("Lebenspunkte rechnen", key="lp_eingabe", on_change=lebenspunkte_rechnen,
+                          placeholder="LP ändern: +10 / -5", label_visibility="collapsed")
 
         with st.container(border=True):
             st.subheader("Zähler")
@@ -743,7 +785,15 @@ with tab_Talente_Attribute:
             st.subheader("Maximale Hotslots")
             st.number_input("Maximale Hotslots", key="Hotslots", min_value=0, step=1, label_visibility="collapsed")
 
-            st.number_input("Maximale Skillenergie", key="max_Skillenergie", min_value=0, step=1)
+            col_Skillenergie, col_man_Skillenergie = st.columns(2)
+
+            with col_Skillenergie:
+                st.html(f'<p class=st-key-Talentwerte>Maximale Skillenergie: {st.session_state['max_Skillenergie']}</p>')
+            with col_man_Skillenergie:
+                st.button("Max Skillenergie +1", on_click=max_Skillenergie_plus)
+
+            st.number_input("Maximale Lebenspunkte", key="max_Lebenspunkte", min_value=1, step=1,
+                            on_change=max_lebenspunkte_geaendert)
 
 
         with col_Kampf:
