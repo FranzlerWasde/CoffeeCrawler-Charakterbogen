@@ -219,15 +219,6 @@ def level_weniger():
     st.session_state.Lebenspunkte -= 3
 
 
-def talent_erhoehen(i):
-    st.session_state[f"TalentWert {i}"] += 1
-    st.session_state["Steigerungspunkte"] -= 2
-
-
-def talent_verringern(i):
-    st.session_state[f"TalentWert {i}"] -= 1
-    st.session_state["Steigerungspunkte"] += 2
-
 def kampftalent_erhoehen(i):
     st.session_state[f"kampftalentemenge {i}"] += 1
     st.session_state["Steigerungspunkte"] -= 2
@@ -236,12 +227,6 @@ def kampftalent_erhoehen(i):
 def kampftalent_verringern(i):
     st.session_state[f"kampftalentemenge {i}"] -= 1
     st.session_state["Steigerungspunkte"] += 2
-
-def kräft_neu_zuweisen():
-    for key, wert in standard_werte.items():
-        if key not in st.session_state:
-            st.session_state[key] = wert
-
 
 def skillenergie_plus():
     st.session_state.Skillenergie += 1
@@ -754,153 +739,126 @@ with tab_Charakter:
 
 with tab_Talente_Attribute:
 
-    @st.fragment
-    def attr_ändern():
-        col_Attribute, col_Talente, col_Kampf = st.columns(3)
+    col_Attribute, col_Talente, col_Kampf = st.columns(3)
 
-        with col_Attribute:
-            with st.container(key="Attributswerte2"):
-                st.subheader("Level")
+    with col_Attribute:
+        with st.container(key="Attributswerte2"):
+            st.subheader("Level")
+            with st.container(horizontal=True):
+                st.button("Level +1", on_click=level_erhoehen, use_container_width=True)
+                st.html(f"Level: {st.session_state['Level']}")
+                st.button("Level -1", on_click=level_weniger, use_container_width=True)
+
+            st.divider()
+            st.subheader("Attribute")
+
+            for attr in ATTRIBUTE_LISTE:
                 with st.container(horizontal=True):
-                    st.button("Level +1", on_click=level_erhoehen, use_container_width=True)
-                    st.html(f"Level: {st.session_state['Level']}")
-                    st.button("Level -1", on_click=level_weniger, use_container_width=True)
+                    st.button(
+                        f"{attr} +1", key=f"btn_{attr}_plus", on_click=attribut_aendern,
+                        args=(attr, 1), use_container_width=True
+                    )
+                    st.html(f"{attr}: {st.session_state[attr]}")
+                    st.button(
+                        f"{attr} -1", key=f"btn_{attr}_minus", on_click=attribut_aendern,
+                        args=(attr, -1), use_container_width=True
+                    )
 
-                st.divider()
-                st.subheader("Attribute")
+            st.space()
+            #st.html(f"Steigerungspunkte: {st.session_state['Steigerungspunkte']}")
 
-                for attr in ATTRIBUTE_LISTE:
-                    with st.container(horizontal=True):
-                        st.button(
-                            f"{attr} +1", key=f"btn_{attr}_plus", on_click=attribut_aendern,
-                            args=(attr, 1), use_container_width=True
-                        )
-                        st.html(f"{attr}: {st.session_state[attr]}")
-                        st.button(
-                            f"{attr} -1", key=f"btn_{attr}_minus", on_click=attribut_aendern,
-                            args=(attr, -1), use_container_width=True
-                        )
+    with col_Talente:
+        st.subheader("Talente")
+        with st.container(key="Talente"):
+            col_wert, col_Talent = st.columns([3, 15], vertical_alignment="center")
 
-                st.space()
-                #st.html(f"Steigerungspunkte: {st.session_state['Steigerungspunkte']}")
+            with col_wert:
+                for i in range(1, anzahl_talente + 1):
+                    st.number_input(
+                        f"TalentWert {i}:", key=f"TalentWert {i}",
+                        min_value=0, step=1, label_visibility="collapsed",
+                    )
 
-        with col_Talente:
-            st.subheader("Talente")
-            with st.container(key="Talente"):
-                col_text, col_plus, col_minus, col_Talent = st.columns([2, 1, 1, 15], vertical_alignment="center")
+            with col_Talent:
+                for i in range(1, anzahl_talente + 1):
+                    talent_wert_key = f"Talent {i}"
+                    st.text_input(f"{talent_wert_key}:", key=talent_wert_key, label_visibility="collapsed")
 
-                with col_text:
-                    for i in range(1, anzahl_talente + 1):
-                        talent_wert = st.session_state.get(f"TalentWert {i}")
+            st.subheader("Maximale Hotslots")
 
-                        st.html(f'<p class=st-key-TalentwerteSpeicher>{talent_wert}</p>')
+            def Hotslot_up():
+                st.session_state["Hotslots"] += 1
+            def Hotslot_down():
+                st.session_state["Hotslots"] -= 1
 
+            col_Hotslot, col_Hotslot_minus ,col_Hotslot_plus, col_Hotslot_Abstand = st.columns([2,1,1,2])
+            with col_Hotslot:
+                st.html(f'<p class=st-key-Talentwerte>Maximale Hotslots: {st.session_state['Hotslots']}</p>')
+            with col_Hotslot_plus:
+                st.button("+1 Hotslot", on_click=Hotslot_up)
+            with col_Hotslot_minus:
+                st.button("-1 Hotslot", on_click=Hotslot_down)
 
-                with col_plus:
-                    for i in range(1, anzahl_talente + 1):
-                        st.button(
-                            "+", key=f"talent_plus_{i}", on_click=talent_erhoehen, args=(i,),
-                        )
+            col_Skillenergie, col_man_Skillenergie = st.columns(2)
 
-                with col_minus:
-                    for i in range(1, anzahl_talente + 1):
-                        st.button(
-                            "-", key=f"talent_minus_{i}", on_click=talent_verringern, args=(i,),
-                        )
-
-                with col_Talent:
-                    for i in range(1, anzahl_talente + 1):
-                        talent_wert_key = f"Talent {i}"
-                        st.text_input(f"{talent_wert_key}:", key=talent_wert_key, label_visibility="collapsed")
-
-                st.subheader("Maximale Hotslots")
-
-                def Hotslot_up():
-                    st.session_state["Hotslots"] += 1
-                def Hotslot_down():
-                    st.session_state["Hotslots"] -= 1
-
-                col_Hotslot, col_Hotslot_minus ,col_Hotslot_plus, col_Hotslot_Abstand = st.columns([2,1,1,2])
-                with col_Hotslot:
-                    st.html(f'<p class=st-key-Talentwerte>Maximale Hotslots: {st.session_state['Hotslots']}</p>')
-                with col_Hotslot_plus:
-                    st.button("+1 Hotslot", on_click=Hotslot_up)
-                with col_Hotslot_minus:
-                    st.button("-1 Hotslot", on_click=Hotslot_down)
-
-                col_Skillenergie, col_man_Skillenergie = st.columns(2)
-
-                with col_Skillenergie:
-                    st.html(f'<p class=st-key-Talentwerte>Maximale Skillenergie: {st.session_state['max_Skillenergie']}</p>')
-                with col_man_Skillenergie:
-                    st.button("Max Skillenergie +1", on_click=max_Skillenergie_plus)
+            with col_Skillenergie:
+                st.html(f'<p class=st-key-Talentwerte>Maximale Skillenergie: {st.session_state['max_Skillenergie']}</p>')
+            with col_man_Skillenergie:
+                st.button("Max Skillenergie +1", on_click=max_Skillenergie_plus)
 
 
-            with col_Kampf:
-                with st.container(key="Handverteilung"):
-                    st.subheader("Kampftalente")
-                    Schadenswürfel= ["1W4", "1W8", "2W6"]
-                    col_Haupthand, col_Zweihand, col_nebenhand = st.columns(3)
+        with col_Kampf:
+            with st.container(key="Handverteilung"):
+                st.subheader("Kampftalente")
+                Schadenswürfel= ["1W4", "1W8", "2W6"]
+                col_Haupthand, col_Zweihand, col_nebenhand = st.columns(3)
 
-                    with col_Haupthand:
-                        st.html(f'<p class= st-key-Handverteilung >Haupthand</p>')
-                        st.text_input("Nahkampf", key="HH_Nahkampf")
-                        st.text_input("Fernkampf", key="HH_Fernkampf")
-                        st.selectbox("Schadenswert", Schadenswürfel, key="HH_Schadenswert")
+                with col_Haupthand:
+                    st.html(f'<p class= st-key-Handverteilung >Haupthand</p>')
+                    st.text_input("Nahkampf", key="HH_Nahkampf")
+                    st.text_input("Fernkampf", key="HH_Fernkampf")
+                    st.selectbox("Schadenswert", Schadenswürfel, key="HH_Schadenswert")
 
-                    with col_Zweihand:
-                        st.html(f'<p class= st-key-Handverteilung >Zweihändig</p>')
-                        st.text_input("Nahkampf", key="ZH_Nahkampf")
-                        st.text_input("Fernkampf", key="ZH_Fernkampf")
-                        st.selectbox("Schadenswert", Schadenswürfel, key="ZH_Schadenswert")
+                with col_Zweihand:
+                    st.html(f'<p class= st-key-Handverteilung >Zweihändig</p>')
+                    st.text_input("Nahkampf", key="ZH_Nahkampf")
+                    st.text_input("Fernkampf", key="ZH_Fernkampf")
+                    st.selectbox("Schadenswert", Schadenswürfel, key="ZH_Schadenswert")
 
-                    with col_nebenhand:
-                        st.html(f'<p class= st-key-Handverteilung >Nebenhand</p>')
-                        st.text_input("Nahkampf", key="NH_Nahkampf")
-                        st.text_input("Fernkampf", key="NH_Fernkampf")
-                        st.selectbox("Schadenswert", Schadenswürfel, key="NH_Schadenswert")
-
-
-                with st.container(key="Angriffe"):
-                    col_Attacke, col_Probe, col_Reichweite, col_Schaden = st.columns([3,2,1,2], vertical_alignment="center")
-                    with col_Attacke:
-                        st.html(f'<p class= st-key-Handverteilung >Attacke</p>')
-                        for i in range(1, anzahl_kampftalente + 1):
-                            Attacke_wert_key = f"Attacke {i}"
-                            st.text_input(f"{Attacke_wert_key}:", key=Attacke_wert_key, label_visibility="collapsed")
+                with col_nebenhand:
+                    st.html(f'<p class= st-key-Handverteilung >Nebenhand</p>')
+                    st.text_input("Nahkampf", key="NH_Nahkampf")
+                    st.text_input("Fernkampf", key="NH_Fernkampf")
+                    st.selectbox("Schadenswert", Schadenswürfel, key="NH_Schadenswert")
 
 
-                    with col_Probe:
-                        st.html(f'<p class= st-key-Handverteilung >Probe</p>')
-                        for i in range(1, anzahl_kampftalente + 1):
-                            Probe_wert_key = f"Probe_Kampf {i}"
-                            st.selectbox(f"{Probe_wert_key}:", key=Probe_wert_key, options= list(WÜRFEL_SEITEN.keys()), label_visibility="collapsed")
-
-                    with col_Reichweite:
-                        st.html(f'<p class= st-key-Handverteilung >Reichweite</p>')
-
-                        for i in range(1, anzahl_kampftalente + 1):
-                            Reichweite_wert_key = f"Reichweite {i}"
-                            st.text_input(f"{Reichweite_wert_key}:", key=Reichweite_wert_key, label_visibility="collapsed")
-
-                    with col_Schaden:
-                        st.html(f'<p class= st-key-Handverteilung >Schaden</p>')
-                        for i in range(1, anzahl_kampftalente + 1):
-                            Schaden_wert_key = f"Schaden {i}"
-                            st.selectbox(f"{Schaden_wert_key}:", key=Schaden_wert_key, options=WÜRFEL_SEITEN, label_visibility="collapsed")
+            with st.container(key="Angriffe"):
+                col_Attacke, col_Probe, col_Reichweite, col_Schaden = st.columns([3,2,1,2], vertical_alignment="center")
+                with col_Attacke:
+                    st.html(f'<p class= st-key-Handverteilung >Attacke</p>')
+                    for i in range(1, anzahl_kampftalente + 1):
+                        Attacke_wert_key = f"Attacke {i}"
+                        st.text_input(f"{Attacke_wert_key}:", key=Attacke_wert_key, label_visibility="collapsed")
 
 
-        if st.button("Kräfte neu zuweisen", use_container_width=True, on_click=kräft_neu_zuweisen):
+                with col_Probe:
+                    st.html(f'<p class= st-key-Handverteilung >Probe</p>')
+                    for i in range(1, anzahl_kampftalente + 1):
+                        Probe_wert_key = f"Probe_Kampf {i}"
+                        st.selectbox(f"{Probe_wert_key}:", key=Probe_wert_key, options= list(WÜRFEL_SEITEN.keys()), label_visibility="collapsed")
 
+                with col_Reichweite:
+                    st.html(f'<p class= st-key-Handverteilung >Reichweite</p>')
 
-            with st.spinner("Mächte werden Übertragen"):
-                # Hier läuft der schwere Code im Hintergrund
-                import time
-                time.sleep(2)  # Simuliert Ladezeit
-            st.success("Fertig!")
-            st.rerun()
+                    for i in range(1, anzahl_kampftalente + 1):
+                        Reichweite_wert_key = f"Reichweite {i}"
+                        st.text_input(f"{Reichweite_wert_key}:", key=Reichweite_wert_key, label_visibility="collapsed")
 
-    attr_ändern()
+                with col_Schaden:
+                    st.html(f'<p class= st-key-Handverteilung >Schaden</p>')
+                    for i in range(1, anzahl_kampftalente + 1):
+                        Schaden_wert_key = f"Schaden {i}"
+                        st.selectbox(f"{Schaden_wert_key}:", key=Schaden_wert_key, options=WÜRFEL_SEITEN, label_visibility="collapsed")
 
 #endregion
 
