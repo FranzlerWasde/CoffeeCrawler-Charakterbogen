@@ -8,8 +8,8 @@ Regelwerke (pro Charakter wählbar):
 
 Hinweis: In der stlite-Playground (https://edit.share.stlite.net/) liegt die Datenbank
 nur im Arbeitsspeicher des Browsers -> Backup über "Spielleiter" herunterladen/einspielen.
-Das Portrait-Zeichenfeld des Miniregelwerks ist eine eigene Streamlit-Komponente und läuft
-vermutlich nur lokal (streamlit run).
+Das Portrait-Zeichenfeld des Miniregelwerks braucht keine eigene Streamlit-Komponente und
+läuft damit auch in der Playground.
 
 AUFBAU DER DATEI
   1. Einstellungen
@@ -325,6 +325,14 @@ def portrait_zu_bytes(portrait):
     return None
 
 
+def html_einbetten(html_text, hoehe):
+    """Bettet eine HTML-Seite ein (st.iframe in neueren Streamlit-Versionen, sonst components.html)."""
+    if hasattr(st, "iframe"):
+        st.iframe(html_text, height=hoehe)
+    else:
+        components.html(html_text, height=hoehe)
+
+
 def backup_dateiname():
     return f"charaktere_backup_{datetime.now():%Y-%m-%d_%H-%M}.db"
 
@@ -332,7 +340,7 @@ def backup_dateiname():
 # ----- Handout-Anzeige
 def pdf_anzeigen(daten):
     b64 = base64.b64encode(daten).decode()
-    components.html(
+    html_einbetten(
         f"""
         <iframe id="pdf" style="width:100%;height:780px;border:0"></iframe>
         <script>
@@ -343,7 +351,7 @@ def pdf_anzeigen(daten):
         document.getElementById("pdf").src = url + "#toolbar=0&navpanes=0";
         </script>
         """,
-        height=800,
+        800,
     )
 
 
@@ -1111,6 +1119,14 @@ div[data-testid="stHorizontalBlock"] {
 div[data-testid="stColumn"] {
     min-width: 0 !important;
 }
+/* Übergabefeld für das Zeichenfeld: unsichtbar, aber im Dokument vorhanden */
+.st-key-portrait_transport {
+    position: absolute;
+    left: -10000px;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+}
 .st-key-hp_button button,
 .st-key-hist_button button,
 [class*="st-key-wurf_"] button {
@@ -1122,8 +1138,12 @@ div[data-testid="stColumn"] {
 """
 
 
-# ----- 5b. Portrait-Komponente (Canvas mit Rückgabe an Python)
-PORTRAIT_INDEX = """<!DOCTYPE html>
+# ----- 5b. Portrait-Zeichenfeld
+# Das Zeichenfeld ist eine normale HTML-Seite (st.iframe / components.html) und braucht keine eigene
+# Streamlit-Komponente, läuft also auch dort, wo keine Komponenten ausgeliefert werden
+# (z. B. stlite-Playground). Das Bild kommt über ein verstecktes Textfeld zu Python zurück
+# (Key "mini_portrait_transport"): JavaScript schreibt "img|<PNG>" bzw. "clear|" hinein.
+PORTRAIT_HTML = """<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
@@ -1243,19 +1263,44 @@ PORTRAIT_INDEX = """<!DOCTYPE html>
 </div>
 
 <script>
-// --- Streamlit-Komponenten-Protokoll ---
-function senden(type, daten) {
-  window.parent.postMessage(
-    Object.assign({ isStreamlitMessage: true, type: type }, daten), "*"
-  );
+const START = __START__;
+
+// --- Rückgabe an Python: schreibt in das versteckte Textfeld der App ---
+function sende(wert) {
+  try {
+    const p = window.parent;
+    const el = p.document.querySelector('.st-key-portrait_transport textarea');
+    if (!el) return;
+    const setter = Object.getOwnPropertyDescriptor(p.HTMLTextAreaElement.prototype, 'value').set;
+    el.focus();
+    setter.call(el, wert);
+    el.dispatchEvent(new p.Event('input', { bubbles: true }));
+    el.blur();  // Streamlit übernimmt den Wert beim Verlassen des Feldes
+  } catch (err) {
+    console.error('Portrait konnte nicht übertragen werden', err);
+  }
 }
-function setzeHoehe() {
-  senden("streamlit:setFrameHeight",
-         { height: document.getElementById('wrap').offsetHeight + 4 });
+
+// --- Farben und Schrift der App übernehmen ---
+function uebernehmeTheme() {
+  try {
+    const p = window.parent;
+    const app = p.document.querySelector('.stApp') || p.document.body;
+    const stil = p.getComputedStyle(app);
+    const root = document.documentElement.style;
+    if (stil.color) {
+      root.setProperty('--text', stil.color);
+      root.setProperty('--border', 'color-mix(in srgb, ' + stil.color + ' 20%, transparent)');
+    }
+    if (stil.fontFamily) document.body.style.fontFamily = stil.fontFamily;
+    const primaer = p.document.querySelector('[data-testid="stBaseButton-primary"]');
+    if (primaer) {
+      const farbe = p.getComputedStyle(primaer).backgroundColor;
+      if (farbe) root.setProperty('--primary', farbe);
+    }
+  } catch (err) { /* Standardfarben bleiben */ }
 }
-function sendeWert(wert) {
-  senden("streamlit:setComponentValue", { value: wert, dataType: "json" });
-}
+uebernehmeTheme();
 
 // --- Canvas ---
 const c = document.getElementById('c');
@@ -1264,7 +1309,6 @@ const farbe = document.getElementById('farbe');
 const breite = document.getElementById('breite');
 const verlauf = [];
 let zeichnet = false;
-let geladen = false;
 
 function weiss() {
   ctx.fillStyle = '#fff';
@@ -1274,13 +1318,10 @@ weiss();
 ctx.lineCap = 'round';
 ctx.lineJoin = 'round';
 
-function zeichneBild(src) {
+if (START) {
   const img = new Image();
-  img.onload = () => {
-    weiss();
-    ctx.drawImage(img, 0, 0, c.width, c.height);
-  };
-  img.src = src;
+  img.onload = () => { weiss(); ctx.drawImage(img, 0, 0, c.width, c.height); };
+  img.src = START;
 }
 
 function pos(e) {
@@ -1314,20 +1355,20 @@ c.addEventListener('pointermove', e => {
 c.addEventListener('pointerup', () => {
   if (!zeichnet) return;
   zeichnet = false;
-  sendeWert(c.toDataURL('image/png'));
+  sende('img|' + c.toDataURL('image/png'));
 });
 
 document.getElementById('undo').onclick = () => {
   const s = verlauf.pop();
   if (s) {
     ctx.putImageData(s, 0, 0);
-    sendeWert(c.toDataURL('image/png'));
+    sende('img|' + c.toDataURL('image/png'));
   }
 };
 document.getElementById('clear').onclick = () => {
   schritt();
   weiss();
-  sendeWert("");  // leerer String = Portrait ist leer
+  sende('clear|');
 };
 document.getElementById('save').onclick = () => {
   const a = document.createElement('a');
@@ -1335,49 +1376,39 @@ document.getElementById('save').onclick = () => {
   a.download = 'charakterportrait.png';
   a.click();
 };
-
-// --- Nachrichten von Streamlit (Theme übernehmen) ---
-window.addEventListener('message', e => {
-  if (!e.data || e.data.type !== 'streamlit:render') return;
-  const t = e.data.theme;
-  if (t) {
-    const root = document.documentElement.style;
-    if (t.textColor) {
-      root.setProperty('--text', t.textColor);
-      root.setProperty('--border', 'color-mix(in srgb, ' + t.textColor + ' 20%, transparent)');
-    }
-    if (t.primaryColor) root.setProperty('--primary', t.primaryColor);
-    if (t.font) document.body.style.fontFamily = t.font;
-  }
-  if (!geladen) {
-    geladen = true;
-    const start = e.data.args && e.data.args.initial;
-    if (start) zeichneBild(start);
-  }
-  setzeHoehe();
-});
-
-senden("streamlit:componentReady", { apiVersion: 1 });
-setzeHoehe();
 </script>
 </body>
 </html>
 """
 
 
-# Falls die Umgebung keine eigenen Komponenten erlaubt, läuft der Bogen ohne Zeichenfeld.
-portrait_komponente = None
-try:
-    PORTRAIT_DIR = Path(__file__).parent / "portrait_component"
-    PORTRAIT_DIR.mkdir(exist_ok=True)
-    _index = PORTRAIT_DIR / "index.html"
-    if not _index.exists() or _index.read_text(encoding="utf-8") != PORTRAIT_INDEX:
-        _index.write_text(PORTRAIT_INDEX, encoding="utf-8")
-    portrait_komponente = components.declare_component(
-        "charakter_portrait", path=str(PORTRAIT_DIR)
-    )
-except Exception:
-    portrait_komponente = None
+def portrait_html(start):
+    """Die Zeichenfläche als HTML; 'start' ist ein vorhandenes Bild (PNG-Data-URL) oder None."""
+    start_js = json.dumps(start or "").replace("</", "<\\/")
+    return PORTRAIT_HTML.replace("__START__", start_js)
+
+
+def mini_bild_hochladen():
+    """Alternative zum Zeichnen: ein Bild hochladen (wird auf die Zeichenfläche gesetzt)."""
+    datei = st.session_state.get("mini_portrait_upload")
+    if datei is None:
+        return
+    try:
+        from PIL import Image
+        bild = Image.open(io.BytesIO(datei.getvalue())).convert("RGB")
+        bild.thumbnail((300, 380))
+        flaeche = Image.new("RGB", (300, 380), "white")
+        flaeche.paste(bild, ((300 - bild.width) // 2, (380 - bild.height) // 2))
+        puffer = io.BytesIO()
+        flaeche.save(puffer, format="PNG")
+    except Exception:
+        st.toast("Das Bild konnte nicht gelesen werden.", icon="⚠️")
+        return
+    daten = PNG_PREFIX + base64.b64encode(puffer.getvalue()).decode("ascii")
+    st.session_state["portrait_data"] = daten
+    st.session_state["portrait_start"] = daten
+    st.session_state["portrait_version"] += 1
+    st.session_state["mini_portrait_transport"] = ""
 
 
 # ----- 5c. Daten <-> Session-State
@@ -1403,6 +1434,7 @@ def mini_bereit():
     """Startwerte (nur beim ersten Aufruf)."""
     st.session_state.setdefault("mini_historie", [])
     st.session_state.setdefault("portrait_data", None)
+    st.session_state.setdefault("portrait_start", None)
     st.session_state.setdefault("portrait_version", 0)
     st.session_state.setdefault("mana_wert", 100)
     for a in MINI_ATTRIBUTE:
@@ -1423,12 +1455,13 @@ def mini_in_session(daten):
     aussehen = char.get("aussehen", "")
     st.session_state["mini_aussehen"] = aussehen if isinstance(aussehen, str) else ""
 
-    # Portrait: neuer Key erzeugt das Canvas neu und lädt die Zeichnung hinein
+    # Portrait: "portrait_start" ist das Bild, mit dem die Zeichenfläche (neu) beginnt
     portrait = daten.get("portrait")
-    st.session_state["portrait_data"] = (
-        portrait if isinstance(portrait, str) and portrait.startswith(PNG_PREFIX) else None
-    )
+    portrait = portrait if isinstance(portrait, str) and portrait.startswith(PNG_PREFIX) else None
+    st.session_state["portrait_data"] = portrait
+    st.session_state["portrait_start"] = portrait
     st.session_state["portrait_version"] += 1
+    st.session_state["mini_portrait_transport"] = ""
 
     # Attribute
     attr = daten.get("attribute", {})
@@ -1537,21 +1570,23 @@ def mini_formular():
 
     # --- Charakterportrait (Canvas) ---
     with st.expander("Charakterportrait", expanded=True):
-        if portrait_komponente is None:
-            st.info("Das Zeichenfeld ist in dieser Umgebung nicht verfügbar.")
-            bild = portrait_zu_bytes(st.session_state["portrait_data"])
-            if bild:
-                st.image(bild)
-            portrait_neu = None
-        else:
-            portrait_neu = portrait_komponente(
-                initial=st.session_state["portrait_data"],
-                key=f"portrait_{st.session_state['portrait_version']}",
-                default=None,
-            )
+        # <!-- Version --> sorgt dafür, dass die Fläche beim Laden eines Bogens neu aufgebaut wird
+        html_einbetten(
+            f"<!-- v{st.session_state['portrait_version']} -->"
+            + portrait_html(st.session_state["portrait_start"]),
+            500,
+        )
+        st.file_uploader("Oder ein Bild hochladen", type=["png", "jpg", "jpeg"],
+                         key="mini_portrait_upload", on_change=mini_bild_hochladen)
 
-    if portrait_neu is not None:
-        st.session_state["portrait_data"] = portrait_neu or None  # "" = leer
+    # Verstecktes Übergabefeld: das Zeichenfeld schreibt hier hinein
+    with st.container(key="portrait_transport"):
+        uebergabe = st.text_area("Portrait-Übergabe", key="mini_portrait_transport",
+                                 label_visibility="collapsed")
+    if uebergabe.startswith("img|"):
+        st.session_state["portrait_data"] = uebergabe[len("img|"):]
+    elif uebergabe == "clear|":
+        st.session_state["portrait_data"] = None
     portrait_data = st.session_state["portrait_data"]
 
     # --- HP ---
@@ -2086,7 +2121,7 @@ def kopfzeile(kopf, modul, bogen, entwurf, dirty):
             stand = "🟠 ungespeicherte Änderungen" if dirty else "🟢 gespeichert"
         st.caption(f"**{titel}** · {modul['name']} · {stand}")
 
-        b1, b2, b3, _ = st.columns([2, 2, 1, 3], vertical_alignment="center")
+        b1, b2, b3, _ = st.columns([3, 3, 1, 1], vertical_alignment="center")
         if b1.button("💾 In Datenbank speichern", type="primary"):
             if not name:
                 st.error("Bitte gib dem Charakter einen Namen.")
