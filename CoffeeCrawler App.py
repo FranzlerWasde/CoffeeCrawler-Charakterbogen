@@ -299,7 +299,7 @@ def regelwerk_name(kuerzel):
 def bestaetigen(frage, schluessel):
     """Zeigt Ja/Nein-Buttons. Gibt True (Ja), False (Nein) oder None (noch keine Antwort) zurück."""
     st.warning(frage)
-    ja, nein, _ = st.columns([1, 1, 6])
+    ja, nein, _ = st.columns([1, 1, 4])
     if ja.button("✅ Ja", key=f"ja_{schluessel}"):
         st.session_state.pop("bestaetigung", None)
         return True
