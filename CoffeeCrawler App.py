@@ -1787,8 +1787,12 @@ def mini_formular():
         st.session_state["portrait_data"] = None
     portrait_data = st.session_state["portrait_data"]
 
+    st.divider()
+
     # --- HP (drei Modi) ---
     hp = mini_hp_bereich()
+
+    st.divider()
 
     # --- Mana / Ressource ---
     st.header("Ressource")
@@ -1805,21 +1809,7 @@ def mini_formular():
             format="%d%%", label_visibility="collapsed",
         )
 
-    # --- Würfelhistorie ---
-    st.header("Würfelhistorie")
-
-    historie = st.session_state["mini_historie"]
-    with st.container(height=150, border=True):
-        if not historie:
-            st.caption("Noch nicht gewürfelt.")
-        for eintrag in reversed(historie):
-            st.write(
-                f"`{eintrag.get('zeit', '--:--:--')}` · "
-                f"**{eintrag['ergebnis']}** · {eintrag['name']} ({eintrag['wuerfel']})"
-            )
-
-    with st.container(key="hist_button"):
-        st.button("Historie leeren", on_click=mini_historie_leeren, disabled=not historie)
+    st.divider()
 
     # --- Attribute ---
     st.header("Attribute")
@@ -1871,6 +1861,22 @@ def mini_formular():
             )
         talente_werte.append({"name": talent_name, "wuerfel": wuerfel})
 
+    # --- Würfelhistorie ---
+    st.header("Würfelhistorie")
+
+    historie = st.session_state["mini_historie"]
+    with st.container(height=150, border=True):
+        if not historie:
+            st.caption("Noch nicht gewürfelt.")
+        for eintrag in reversed(historie):
+            st.write(
+                f"`{eintrag.get('zeit', '--:--:--')}` · "
+                f"**{eintrag['ergebnis']}** · {eintrag['name']} ({eintrag['wuerfel']})"
+            )
+
+    with st.container(key="hist_button"):
+        st.button("Historie leeren", on_click=mini_historie_leeren, disabled=not historie)
+        
     # --- Inventar ---
     st.header("Inventar")
     inventar = st.text_area(
