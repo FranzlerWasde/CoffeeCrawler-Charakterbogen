@@ -1914,7 +1914,7 @@ def entwurf_in_db_speichern():
     name = bogen_name(bogen)
     besitzer = e["besitzer"] or st.session_state.get("spieler", "").strip()
     if not besitzer:
-        return "Gib links deinen Spielernamen ein, um den Charakter zu speichern."
+        return "Gib links in der Sidebar deinen Spielernamen ein, um den Charakter zu speichern."
     if not name:
         return "Bitte gib dem Charakter einen Namen."
     charakter_speichern(besitzer, name, bogen)
