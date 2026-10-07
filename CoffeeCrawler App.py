@@ -1987,7 +1987,7 @@ def json_laden():
 def seite_neu(spieler):
     st.title("Neuen Charakter erstellen")
     if not spieler:
-        st.info("Gib links deinen Spielernamen ein, um einen neuen Charakter zu erstellen.")
+        st.info("Gib links in der Sidebar deinen Spielernamen ein, um einen neuen Charakter zu erstellen.")
         return
 
     st.selectbox("Regelwerk", list(REGELWERKE), format_func=regelwerk_name, key="neu_regelwerk")
