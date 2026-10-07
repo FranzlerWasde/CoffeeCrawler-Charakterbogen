@@ -2304,7 +2304,7 @@ def kopfzeile(kopf, modul, bogen, entwurf, dirty):
             stand = "🟠 ungespeicherte Änderungen" if dirty else "🟢 gespeichert"
         st.caption(f"**{titel}** · {modul['name']} · {stand}")
 
-        b1, b2, b3, _ = st.columns([3, 3, 1, 1], vertical_alignment="center")
+        b1, b2, b3, = st.columns([3, 3, 1], vertical_alignment="center")
         if b1.button("💾 In Datenbank speichern", type="primary"):
             if not name:
                 st.error("Bitte gib dem Charakter einen Namen.")
