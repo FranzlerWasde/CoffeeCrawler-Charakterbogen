@@ -24,6 +24,7 @@ AUFBAU DER DATEI
  10. Start
 """
 import base64
+import copy
 import hashlib
 import html
 import io
@@ -1418,7 +1419,7 @@ def mini_leer():
         "charakter": {"setting": "", "name": "", "alter": None, "aussehen": ""},
         "portrait": None,
         "attribute": {a: "W4" for a in MINI_ATTRIBUTE},
-        "hp": {"aktuell": None, "maximum": None},
+        "hp": mini_hp_normalisieren({}),
         "mana": {"name": "", "prozent": 100},
         "talente": [],
         "inventar": "",
@@ -1437,6 +1438,8 @@ def mini_bereit():
     st.session_state.setdefault("portrait_start", None)
     st.session_state.setdefault("portrait_version", 0)
     st.session_state.setdefault("mana_wert", 100)
+    if "mini_hp_speicher" not in st.session_state:
+        mini_hp_in_session({})
     for a in MINI_ATTRIBUTE:
         st.session_state.setdefault(f"attr_{a}", "W4")
 
@@ -1468,20 +1471,8 @@ def mini_in_session(daten):
     for a in MINI_ATTRIBUTE:
         st.session_state[f"attr_{a}"] = mini_wuerfel_ok(attr.get(a))
 
-    # HP
-    hp = daten.get("hp", {})
-    maximum = hp.get("maximum")
-    if isinstance(maximum, int):
-        aktuell = hp.get("aktuell")
-        if not isinstance(aktuell, int):
-            aktuell = maximum
-        st.session_state["hp_max"] = maximum
-        st.session_state["hp_aktuell"] = max(0, min(aktuell, maximum))
-        st.session_state["hp_info"] = "aus Datei geladen"
-    else:
-        st.session_state["hp_max"] = None
-        st.session_state.pop("hp_aktuell", None)
-        st.session_state.pop("hp_info", None)
+    # HP (drei Modi)
+    mini_hp_in_session(daten.get("hp", {}))
 
     # Mana / Ressource
     mana = daten.get("mana", {})
@@ -1546,7 +1537,212 @@ def mini_hp_zuruecksetzen():
     st.session_state.pop("hp_info", None)
 
 
-# ----- 5e. Der Bogen als Ganzes
+# ----- 5e. Lebenspunkte (drei Modi, per st.pills wählbar)
+#   zufall   Maximum wird mit dem Konstitutions-Würfel ausgewürfelt, aktuelle HP per Slider
+#   fest     festes Maximum, aktuelle LP über ein +/- Feld verrechnen (gedeckelt am Maximum)
+#   treffer  Trefferpunkte als Kästchen: angekreuzt = noch vorhanden
+# Gespeichert wird alles im Bogen unter "hp":
+#   {"modus": ..., "zufall": {...}, "fest": {...}, "treffer": {...}}  – jeder Modus behält
+#   seine Werte, auch wenn man zwischendurch den Modus wechselt.
+MINI_HP_MODI = ["zufall", "fest", "treffer"]
+MINI_HP_NAMEN = {"zufall": "Zufällige Lebenspunkte", "fest": "Feste Lebenspunkte",
+                 "treffer": "Trefferpunkte"}
+MINI_TREFFER_MAX = 30
+MINI_TREFFER_STANDARD = 3
+MINI_FEST_STANDARD = 10
+
+
+def mini_zahl(wert, standard=None):
+    """Ganze Zahl (kein Wahrheitswert) oder der Standardwert."""
+    return wert if isinstance(wert, int) and not isinstance(wert, bool) else standard
+
+
+def mini_hp_normalisieren(hp):
+    """Bringt hp-Daten in die aktuelle Form (ältere Bögen kennen nur 'maximum'/'aktuell',
+    das entspricht den zufälligen Lebenspunkten)."""
+    hp = hp if isinstance(hp, dict) else {}
+    modus = hp.get("modus") if hp.get("modus") in MINI_HP_MODI else "zufall"
+
+    zufall = hp.get("zufall") if isinstance(hp.get("zufall"), dict) else hp
+    z_max = mini_zahl(zufall.get("maximum"))
+    z_aktuell = None
+    if z_max is not None:
+        z_aktuell = max(0, min(mini_zahl(zufall.get("aktuell"), z_max), z_max))
+    z_info = zufall.get("info") if isinstance(zufall.get("info"), str) else ""
+
+    fest = hp.get("fest") if isinstance(hp.get("fest"), dict) else {}
+    f_max = max(1, mini_zahl(fest.get("maximum"), MINI_FEST_STANDARD))
+    f_aktuell = max(0, min(mini_zahl(fest.get("aktuell"), f_max), f_max))
+
+    treffer = hp.get("treffer") if isinstance(hp.get("treffer"), dict) else {}
+    t_max = max(1, min(mini_zahl(treffer.get("maximum"), MINI_TREFFER_STANDARD), MINI_TREFFER_MAX))
+    markiert = treffer.get("uebrig") if isinstance(treffer.get("uebrig"), list) else []
+    t_uebrig = [bool(markiert[i]) if i < len(markiert) else True for i in range(t_max)]
+
+    return {
+        "modus": modus,
+        "zufall": {"maximum": z_max, "aktuell": z_aktuell, "info": z_info if z_max is not None else ""},
+        "fest": {"maximum": f_max, "aktuell": f_aktuell},
+        "treffer": {"maximum": t_max, "uebrig": t_uebrig},
+    }
+
+
+def mini_hp_in_session(hp):
+    """Merkt sich die Lebenspunkte eines Bogens; die Felder werden beim Zeichnen geladen."""
+    hp = mini_hp_normalisieren(hp)
+    st.session_state["mini_hp_speicher"] = hp
+    st.session_state["mini_hp_modus"] = hp["modus"]
+    st.session_state["mini_hp_modus_merk"] = hp["modus"]
+    st.session_state.pop("mini_hp_zuletzt", None)  # -> Felder neu laden
+
+
+def mini_hp_felder_laden(modus, daten):
+    """Schreibt die gespeicherten Werte eines Modus in seine Eingabefelder. Das passiert bei
+    jedem Betreten des Modus, denn Streamlit verwirft die Felder nicht angezeigter Modi
+    (oder behält veraltete Werte)."""
+    if modus == "zufall":
+        st.session_state["hp_max"] = daten["maximum"]
+        if daten["maximum"] is not None:
+            st.session_state["hp_aktuell"] = daten["aktuell"]
+            st.session_state["hp_info"] = daten["info"] or "aus Datei geladen"
+        else:
+            st.session_state.pop("hp_aktuell", None)
+            st.session_state.pop("hp_info", None)
+    elif modus == "fest":
+        st.session_state["hp_fest_max"] = daten["maximum"]
+        st.session_state["hp_fest_max_alt"] = daten["maximum"]
+        st.session_state["hp_fest_aktuell"] = daten["aktuell"]
+    else:
+        st.session_state["hp_treffer_max"] = daten["maximum"]
+        for i in range(MINI_TREFFER_MAX):
+            if i < daten["maximum"]:
+                st.session_state[f"hp_treffer_{i}"] = daten["uebrig"][i]
+            else:
+                st.session_state.pop(f"hp_treffer_{i}", None)
+
+
+# --- Callbacks
+def mini_hp_modus_geaendert():
+    """Die Auswahl in st.pills lässt sich abwählen – das nehmen wir zurück."""
+    neu = st.session_state.get("mini_hp_modus")
+    if neu is None:
+        st.session_state["mini_hp_modus"] = st.session_state.get("mini_hp_modus_merk", "zufall")
+    else:
+        st.session_state["mini_hp_modus_merk"] = neu
+
+
+def mini_hp_fest_max_geaendert():
+    """Steigt das Maximum, steigen die aktuellen LP um denselben Betrag; sinkt es, wird gedeckelt."""
+    neu = st.session_state["hp_fest_max"]
+    delta = neu - st.session_state["hp_fest_max_alt"]
+    aktuell = st.session_state["hp_fest_aktuell"] + max(delta, 0)
+    st.session_state["hp_fest_aktuell"] = max(0, min(aktuell, neu))
+
+
+def mini_hp_fest_rechnen():
+    """Rechnet die Eingabe auf die aktuellen LP, z. B. '+5', '-3' oder '10-3+2'."""
+    eingabe = st.session_state["hp_fest_eingabe"].replace(" ", "")
+    st.session_state["hp_fest_eingabe"] = ""
+    if not eingabe:
+        return
+    if not re.fullmatch(r"[+-]?\d+([+-]\d+)*", eingabe):
+        st.toast("Bitte eine gültige Rechnung eingeben (z.B. +5, -3, 10-3)", icon="⚠️")
+        return
+    summe = sum(int(zahl) for zahl in re.findall(r"[+-]?\d+", eingabe))
+    maximum = st.session_state["hp_fest_max"]
+    st.session_state["hp_fest_aktuell"] = max(0, min(st.session_state["hp_fest_aktuell"] + summe, maximum))
+
+
+# --- Die drei Modi
+def mini_hp_zufall(daten):
+    """Zufällige Lebenspunkte: Würfel aus Konstitution, aktuelle HP per Slider."""
+    hp_max = st.session_state["hp_max"]
+    konstitution = st.session_state.get("attr_Konstitution")
+
+    with st.container(key="hp_button"):
+        c1, c2, _ = st.columns([1, 1, 1], vertical_alignment="center")
+        with c1:
+            st.button(
+                "🎲 HP würfeln",
+                on_click=mini_hp_wuerfeln,
+                disabled=konstitution is None or hp_max is not None,
+            )
+        with c2:
+            if hp_max is not None:
+                st.button("↺ Zurücksetzen", on_click=mini_hp_zuruecksetzen)
+
+    if konstitution is None and hp_max is None:
+        st.caption("Wähle zuerst einen Würfel für Konstitution.")
+
+    if hp_max is None:
+        return {"maximum": None, "aktuell": None, "info": ""}
+    info = st.session_state.get("hp_info", "")
+    st.caption(info + f" = {hp_max} HP maximal")
+    aktuell = st.slider("Aktuelle HP", min_value=0, max_value=hp_max, key="hp_aktuell")
+    return {"maximum": hp_max, "aktuell": aktuell, "info": info}
+
+
+def mini_hp_fest(daten):
+    """Feste Lebenspunkte: Maximum festlegen, aktuelle LP mit +/- verrechnen."""
+    # Vorheriges Maximum merken (der Callback braucht die Differenz) und LP im Rahmen halten
+    st.session_state["hp_fest_max_alt"] = st.session_state["hp_fest_max"]
+    st.session_state["hp_fest_aktuell"] = max(
+        0, min(st.session_state["hp_fest_aktuell"], st.session_state["hp_fest_max"]))
+
+    maximum = st.number_input("Maximale Lebenspunkte", min_value=1, step=1, key="hp_fest_max",
+                              on_change=mini_hp_fest_max_geaendert)
+    aktuell = st.session_state["hp_fest_aktuell"]
+    st.markdown(f"### {aktuell} / {maximum}")
+    st.progress(aktuell / maximum)
+    st.text_input("LP ändern", key="hp_fest_eingabe", on_change=mini_hp_fest_rechnen,
+                  placeholder="LP ändern: +5 / -3", label_visibility="collapsed")
+    return {"maximum": maximum, "aktuell": aktuell}
+
+
+def mini_hp_treffer(daten):
+    """Trefferpunkte: Anzahl festlegen, Kästchen ankreuzen (angekreuzt = noch vorhanden)."""
+    maximum = st.number_input("Trefferpunkte (Maximum)", min_value=1, max_value=MINI_TREFFER_MAX,
+                              step=1, key="hp_treffer_max")
+    for i in range(maximum):  # neue Kästchen starten angekreuzt
+        st.session_state.setdefault(
+            f"hp_treffer_{i}", daten["uebrig"][i] if i < len(daten["uebrig"]) else True)
+
+    uebrig = []
+    for start in range(0, maximum, 10):
+        spalten = st.columns(10)
+        for i in range(start, min(start + 10, maximum)):
+            with spalten[i - start]:
+                uebrig.append(st.checkbox(str(i + 1), key=f"hp_treffer_{i}"))
+    st.caption(f"Übrig: {sum(uebrig)} / {maximum}")
+    return {"maximum": maximum, "uebrig": uebrig}
+
+
+def mini_hp_bereich():
+    """Der HP-Abschnitt mit Moduswahl. Gibt das hp-Dictionary für den Bogen zurück."""
+    st.header("HP")
+    speicher = st.session_state["mini_hp_speicher"]
+
+    st.pills("Art der Lebenspunkte", MINI_HP_MODI, key="mini_hp_modus",
+             format_func=MINI_HP_NAMEN.get, on_change=mini_hp_modus_geaendert,
+             label_visibility="collapsed")
+    modus = st.session_state.get("mini_hp_modus") or st.session_state.get("mini_hp_modus_merk", "zufall")
+
+    if st.session_state.get("mini_hp_zuletzt") != modus:  # Modus gerade betreten
+        mini_hp_felder_laden(modus, speicher[modus])
+    st.session_state["mini_hp_zuletzt"] = modus
+
+    darstellung = {"zufall": mini_hp_zufall, "fest": mini_hp_fest, "treffer": mini_hp_treffer}
+    neu = darstellung[modus](speicher[modus])
+
+    # Die anderen Modi behalten ihre zuletzt gespeicherten Werte
+    speicher = copy.deepcopy(speicher)
+    speicher["modus"] = modus
+    speicher[modus] = neu
+    st.session_state["mini_hp_speicher"] = speicher
+    return copy.deepcopy(speicher)
+
+
+# ----- 5f. Der Bogen als Ganzes
 def mini_formular():
     """Zeichnet den Bogen und gibt ihn als Dictionary zurück."""
     # --- Setting (Titel des One Shots) und Charakter ---
@@ -1589,34 +1785,8 @@ def mini_formular():
         st.session_state["portrait_data"] = None
     portrait_data = st.session_state["portrait_data"]
 
-    # --- HP ---
-    st.header("HP")
-
-    konstitution = st.session_state.get("attr_Konstitution")
-    hp_max = st.session_state.get("hp_max")
-
-    with st.container(key="hp_button"):
-        c1, c2, _ = st.columns([1, 1, 1], vertical_alignment="center")
-        with c1:
-            st.button(
-                "🎲 HP würfeln",
-                on_click=mini_hp_wuerfeln,
-                disabled=konstitution is None or hp_max is not None,
-            )
-        with c2:
-            if hp_max is not None:
-                st.button("↺ Zurücksetzen", on_click=mini_hp_zuruecksetzen)
-
-    if konstitution is None and hp_max is None:
-        st.caption("Wähle zuerst einen Würfel für Konstitution.")
-
-    if hp_max is None:
-        hp_aktuell = None
-    else:
-        st.caption(st.session_state.get("hp_info", "") + f" = {hp_max} HP maximal")
-        hp_aktuell = st.slider(
-            "Aktuelle HP", min_value=0, max_value=hp_max, key="hp_aktuell",
-        )
+    # --- HP (drei Modi) ---
+    hp = mini_hp_bereich()
 
     # --- Mana / Ressource ---
     st.header("Ressource")
@@ -1723,7 +1893,7 @@ def mini_formular():
         },
         "portrait": portrait_data,
         "attribute": attribute_werte,
-        "hp": {"aktuell": hp_aktuell, "maximum": hp_max},
+        "hp": hp,
         "mana": {"name": mana_name, "prozent": mana_wert},
         "talente": talente_werte,
         "inventar": inventar,
@@ -1731,10 +1901,10 @@ def mini_formular():
     }
 
 
-# ----- 5f. Ansicht für den Spielleiter (nur lesen)
+# ----- 5g. Ansicht für den Spielleiter (nur lesen)
 def mini_gm_ansicht(bogen, schluessel):
     char = bogen.get("charakter", {})
-    hp = bogen.get("hp", {})
+    hp = mini_hp_normalisieren(bogen.get("hp", {}))
     mana = bogen.get("mana", {})
     attribute = bogen.get("attribute", {})
     talente = [t for t in bogen.get("talente", []) if t.get("name")]
@@ -1745,10 +1915,15 @@ def mini_gm_ansicht(bogen, schluessel):
         st.markdown(f"**{char.get('name', '')}** · Alter: {alter if alter is not None else '–'}")
         st.caption(f"Setting: {char.get('setting') or '–'}")
         st.write(char.get("aussehen") or "–")
-        if hp.get("maximum") is not None:
-            st.metric("HP", f"{hp.get('aktuell')} / {hp.get('maximum')}")
+        modus = hp["modus"]
+        daten = hp[modus]
+        if modus == "treffer":
+            wert = f"{sum(daten['uebrig'])} / {daten['maximum']}"
+        elif daten["maximum"] is not None:
+            wert = f"{daten['aktuell']} / {daten['maximum']}"
         else:
-            st.metric("HP", "–")
+            wert = "–"
+        st.metric(MINI_HP_NAMEN[modus], wert)
         st.metric(mana.get("name") or "Ressource", f"{mana.get('prozent', 100)} %")
         bild = portrait_zu_bytes(bogen.get("portrait"))
         if bild:
@@ -1914,7 +2089,7 @@ def entwurf_in_db_speichern():
     name = bogen_name(bogen)
     besitzer = e["besitzer"] or st.session_state.get("spieler", "").strip()
     if not besitzer:
-        return "Gib links in der Sidebar deinen Spielernamen ein, um den Charakter zu speichern."
+        return "Gib links deinen Spielernamen ein, um den Charakter zu speichern."
     if not name:
         return "Bitte gib dem Charakter einen Namen."
     charakter_speichern(besitzer, name, bogen)
@@ -1987,7 +2162,7 @@ def json_laden():
 def seite_neu(spieler):
     st.title("Neuen Charakter erstellen")
     if not spieler:
-        st.info("Gib links in der Sidebar deinen Spielernamen ein, um einen neuen Charakter zu erstellen.")
+        st.info("Gib links deinen Spielernamen ein, um einen neuen Charakter zu erstellen.")
         return
 
     st.selectbox("Regelwerk", list(REGELWERKE), format_func=regelwerk_name, key="neu_regelwerk")
