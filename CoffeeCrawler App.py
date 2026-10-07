@@ -1102,8 +1102,8 @@ def cc_gm_ansicht(bogen, schluessel):
 
 # ----- 5a. Konfiguration
 MINI_WUERFEL = ["W4", "W6", "W8", "W10", "W12"]
-MINI_ATTRIBUTE = ["Stärke", "Geschicklichkeit", "Konstitution", "Intelligenz",
-                  "Weisheit", "Wahrnehmung", "Erscheinung", "Charisma", "Manipulation"]
+MINI_ATTRIBUTE = ["Erscheinung", "Charisma", "Manipulation", "Intelligenz",
+                  "Weisheit", "Wahrnehmung", "Stärke", "Geschicklichkeit", "Konstitution"]
 MINI_ANZAHL_TALENTE = 3
 MINI_MAX_HISTORIE = 50
 
