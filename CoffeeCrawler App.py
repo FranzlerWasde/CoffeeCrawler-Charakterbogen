@@ -1667,7 +1667,7 @@ def mini_hp_zufall(daten):
                 on_click=mini_hp_wuerfeln,
                 disabled=konstitution is None or hp_max is not None,
             )
-        if not konstitution is None or hp_max is not None:
+        if hp_max is None:
           st.info("steigere erst noch deine Konstitution")
         with c2:
             if hp_max is not None:
