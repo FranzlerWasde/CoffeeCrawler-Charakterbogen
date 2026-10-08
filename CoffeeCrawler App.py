@@ -8,7 +8,7 @@ Regelwerke (pro Charakter wählbar):
 
 Hinweis: In der stlite-Playground (https://edit.share.stlite.net/) liegt die Datenbank
 nur im Arbeitsspeicher des Browsers -> Backup über "Spielleiter" herunterladen/einspielen.
-Das Portrait-Zeichenfeld des Miniregelwerks braucht keine eigene Streamlit-Komponente und
+Das Portrait-Zeichenfeld (beide Regelwerke) braucht keine eigene Streamlit-Komponente und
 läuft damit auch in der Playground.
 
 AUFBAU DER DATEI
@@ -16,7 +16,7 @@ AUFBAU DER DATEI
   2. Datenbank
   3. Gemeinsame Helfer
   4. Regelwerk „Standard“ (Coffeecrawler)
-  5. Regelwerk „Miniregelwerk“
+  5. Regelwerk „Miniregelwerk“   (enthält auch das gemeinsame Portrait-Zeichenfeld)
   6. Regelwerk-Register         <- hier wird ein neues Regelwerk eingetragen
   7. Spieler-Bereich            (Neu · Laden · Charakter bearbeiten · Handouts)
   8. Spielleiter-Bereich        (Charaktere · Handouts verwalten · Backup)
@@ -400,6 +400,23 @@ CC_TRICKS = {
 }
 CC_TABELLEN = [CC_KAMPF, CC_TRICKS]
 
+# Verstecktes Übergabefeld des Zeichenfelds (siehe Abschnitt 5b).
+# position: fixed verhindert, dass die Seite beim Fokussieren des Feldes springt.
+CC_CSS = """
+<style>
+.st-key-cc_portrait_box {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    overflow: hidden;
+    pointer-events: none;
+}
+</style>
+"""
+
 # Grundwerte (einzelne Felder)
 CC_BASIS = {
     # Charakter
@@ -421,6 +438,14 @@ CC_BASIS = {
     "Diredare": 0, "Diredare ausgegeben/verdient": "",
     "Notizen": "",
 }
+
+
+def cc_bild_data_url(b64):
+    """Gespeichertes Bild (Base64 ohne Prefix, PNG oder altes JPEG) -> Data-URL für das Zeichenfeld."""
+    if not b64:
+        return None
+    mime = "image/jpeg" if b64.startswith("/9j/") else "image/png"
+    return f"data:{mime};base64,{b64}"
 
 
 def cc_standardwerte():
@@ -476,6 +501,10 @@ def cc_in_session(bogen):
     for key, wert in cc_werte_ergaenzen(bogen.get("werte", {})).items():
         st.session_state[key] = wert
     st.session_state.pop("letzte_probe", None)
+    # Zeichenfeld mit dem gespeicherten Porträt neu aufbauen
+    st.session_state["cc_portrait_start"] = cc_bild_data_url(st.session_state["bild_base64"])
+    st.session_state["cc_portrait_version"] = st.session_state.get("cc_portrait_version", 0) + 1
+    st.session_state["cc_portrait_transport"] = ""
 
 
 def cc_bereit():
@@ -485,6 +514,8 @@ def cc_bereit():
     for i in range(st.session_state["Hotslots"]):
         st.session_state.setdefault(f"hotslot_auswahl_{i}", "")
     st.session_state.setdefault("wuerfel_historie", [])
+    st.session_state.setdefault("cc_portrait_start", cc_bild_data_url(st.session_state["bild_base64"]))
+    st.session_state.setdefault("cc_portrait_version", 0)
 
     # Vorherige Werte von Level und Attributen merken: die on_change-Callbacks brauchen sie,
     # um die Differenz für die Steigerungspunkte zu berechnen
@@ -499,21 +530,35 @@ def cc_bereit():
 
 # ----- 4c. Callbacks
 def cc_bild_verarbeiten():
-    """Neues Porträt hochgeladen: verkleinern (hält Datenbank und Zwischenspeicher klein)."""
+    """Bild hochgeladen: auf die Zeichenfläche (300x380) setzen und als Porträt übernehmen."""
     datei = st.session_state.get("neues_bild_uploader")
     if datei is None:
         return
-    daten = datei.getvalue()
     try:
         from PIL import Image
-        bild = Image.open(io.BytesIO(daten)).convert("RGB")
-        bild.thumbnail((800, 800))
+        bild = Image.open(io.BytesIO(datei.getvalue())).convert("RGB")
+        bild.thumbnail((300, 380))
+        flaeche = Image.new("RGB", (300, 380), "white")
+        flaeche.paste(bild, ((300 - bild.width) // 2, (380 - bild.height) // 2))
         puffer = io.BytesIO()
-        bild.save(puffer, format="JPEG", quality=85)
-        daten = puffer.getvalue()
+        flaeche.save(puffer, format="PNG")
     except Exception:
-        pass  # Original unverändert übernehmen
-    st.session_state["bild_base64"] = base64.b64encode(daten).decode("utf-8")
+        st.toast("Das Bild konnte nicht gelesen werden.", icon="⚠️")
+        return
+    b64 = base64.b64encode(puffer.getvalue()).decode("ascii")
+    st.session_state["bild_base64"] = b64
+    st.session_state["cc_portrait_start"] = PNG_PREFIX + b64
+    st.session_state["cc_portrait_version"] += 1
+    st.session_state["cc_portrait_transport"] = ""
+
+
+def cc_portrait_uebernehmen():
+    """Übernimmt das, was das Zeichenfeld gemeldet hat, in 'bild_base64'."""
+    uebergabe = st.session_state.get("cc_portrait_transport", "")
+    if uebergabe.startswith("img|" + PNG_PREFIX):
+        st.session_state["bild_base64"] = uebergabe[len("img|" + PNG_PREFIX):]
+    elif uebergabe == "clear|":
+        st.session_state["bild_base64"] = ""
 
 
 def cc_attribut_geaendert(attribut):
@@ -889,11 +934,18 @@ def cc_tab_charakter():
             st.text_input(feld, key=feld)
 
     with col_portrait:
-        st.subheader("Porträt einfügen")
-        if st.session_state["bild_base64"]:
-            st.image(base64.b64decode(st.session_state["bild_base64"]), use_container_width=True)
-        st.file_uploader("Bild auswählen", type=["png", "jpg", "jpeg"], key="neues_bild_uploader",
-                         on_change=cc_bild_verarbeiten, label_visibility="collapsed")
+        st.subheader("Porträt zeichnen")
+        html_einbetten(
+            f"<!-- v{st.session_state['cc_portrait_version']} -->"
+            + portrait_html(st.session_state["cc_portrait_start"], "cc_portrait_box"),
+            620,
+        )
+        st.file_uploader("Oder ein Bild hochladen", type=["png", "jpg", "jpeg"],
+                         key="neues_bild_uploader", on_change=cc_bild_verarbeiten)
+        # Verstecktes Übergabefeld: das Zeichenfeld schreibt hier hinein
+        with st.container(key="cc_portrait_box"):
+            st.text_area("Portrait-Übergabe", key="cc_portrait_transport",
+                         label_visibility="collapsed")
 
 
 # ----- 4h. Tab „Attribute und Talente“
@@ -1009,6 +1061,10 @@ def cc_tab_debug():
 # ----- 4j. Der Bogen als Ganzes
 def cc_formular():
     """Zeichnet den Bogen und gibt ihn als Dictionary zurück."""
+    # Porträt aus dem Zeichenfeld übernehmen, bevor die Tabs gezeichnet werden
+    # (sonst würde die Übersicht erst einen Durchlauf später das neue Bild zeigen)
+    cc_portrait_uebernehmen()
+
     # TODO: Rüstungsklasse und Trefferchance; Talente: Probe und Schaden als Festwert + Würfelbutton
     tab_namen = ["Übersicht", "Charakter Details", "Attribute und Talente",
                  "Skills und Tricks", "Inventar", "Notizen"]
@@ -1120,13 +1176,17 @@ div[data-testid="stHorizontalBlock"] {
 div[data-testid="stColumn"] {
     min-width: 0 !important;
 }
-/* Übergabefeld für das Zeichenfeld: unsichtbar, aber im Dokument vorhanden */
+/* Übergabefeld für das Zeichenfeld: unsichtbar, aber im Dokument vorhanden.
+   position: fixed verhindert, dass die Seite beim Fokussieren des Feldes springt. */
 .st-key-portrait_transport {
-    position: absolute;
-    left: -10000px;
+    position: fixed;
+    top: 0;
+    left: 0;
     width: 1px;
     height: 1px;
+    opacity: 0;
     overflow: hidden;
+    pointer-events: none;
 }
 .st-key-hp_button button,
 .st-key-hist_button button,
@@ -1139,11 +1199,12 @@ div[data-testid="stColumn"] {
 """
 
 
-# ----- 5b. Portrait-Zeichenfeld
+# ----- 5b. Portrait-Zeichenfeld (wird von beiden Regelwerken benutzt)
 # Das Zeichenfeld ist eine normale HTML-Seite (st.iframe / components.html) und braucht keine eigene
 # Streamlit-Komponente, läuft also auch dort, wo keine Komponenten ausgeliefert werden
-# (z. B. stlite-Playground). Das Bild kommt über ein verstecktes Textfeld zu Python zurück
-# (Key "mini_portrait_transport"): JavaScript schreibt "img|<PNG>" bzw. "clear|" hinein.
+# (z. B. stlite-Playground). Das Bild kommt über ein verstecktes Textfeld zu Python zurück:
+# JavaScript schreibt "img|<PNG>" bzw. "clear|" in das Textfeld im Container mit dem Key __KEY__
+# (Miniregelwerk: "portrait_transport", Standard: "cc_portrait_box").
 PORTRAIT_HTML = """<!DOCTYPE html>
 <html>
 <head>
@@ -1210,6 +1271,7 @@ PORTRAIT_HTML = """<!DOCTYPE html>
   }
   button:hover { border-color: var(--primary); color: var(--primary); }
   button:active { background: var(--primary); border-color: var(--primary); color: #fff; }
+  button.aktiv { border-color: var(--primary); color: var(--primary); }
   button:focus-visible {
     outline: 2px solid color-mix(in srgb, var(--primary) 50%, transparent);
     outline-offset: 1px;
@@ -1246,6 +1308,14 @@ PORTRAIT_HTML = """<!DOCTYPE html>
       <input type="range" id="breite" min="1" max="20" value="3">
     </label>
     <div class="btns">
+      <button id="stift" type="button" class="aktiv">
+        <svg viewBox="0 0 24 24"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+        Stift
+      </button>
+      <button id="radierer" type="button">
+        <svg viewBox="0 0 24 24"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg>
+        Radierer
+      </button>
       <button id="undo" type="button">
         <svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"/></svg>
         Zurück
@@ -1265,18 +1335,30 @@ PORTRAIT_HTML = """<!DOCTYPE html>
 
 <script>
 const START = __START__;
+const KEY = __KEY__;
+let radierer = false;
 
 // --- Rückgabe an Python: schreibt in das versteckte Textfeld der App ---
 function sende(wert) {
   try {
     const p = window.parent;
-    const el = p.document.querySelector('.st-key-portrait_transport textarea');
+    const el = p.document.querySelector('.st-key-' + KEY + ' textarea');
     if (!el) return;
+
+    // Scroll-Positionen merken (Seite und Streamlit-Hauptbereich)
+    const haupt = p.document.querySelector('section.main, [data-testid="stMain"]');
+    const scrollY = p.scrollY;
+    const hauptY = haupt ? haupt.scrollTop : 0;
+
     const setter = Object.getOwnPropertyDescriptor(p.HTMLTextAreaElement.prototype, 'value').set;
-    el.focus();
+    el.focus({ preventScroll: true });
     setter.call(el, wert);
     el.dispatchEvent(new p.Event('input', { bubbles: true }));
     el.blur();  // Streamlit übernimmt den Wert beim Verlassen des Feldes
+
+    // Falls der Browser trotzdem gescrollt hat: zurücksetzen
+    p.scrollTo(0, scrollY);
+    if (haupt) haupt.scrollTop = hauptY;
   } catch (err) {
     console.error('Portrait konnte nicht übertragen werden', err);
   }
@@ -1338,8 +1420,8 @@ function schritt() {
 c.addEventListener('pointerdown', e => {
   schritt();
   zeichnet = true;
-  ctx.strokeStyle = farbe.value;
-  ctx.lineWidth = breite.value;
+  ctx.strokeStyle = radierer ? '#ffffff' : farbe.value;
+  ctx.lineWidth = radierer ? breite.value * 3 : breite.value;
   const [x, y] = pos(e);
   ctx.beginPath();
   ctx.moveTo(x, y);
@@ -1358,6 +1440,19 @@ c.addEventListener('pointerup', () => {
   zeichnet = false;
   sende('img|' + c.toDataURL('image/png'));
 });
+
+// --- Werkzeug: Stift oder Radierer ---
+const btnStift = document.getElementById('stift');
+const btnRadierer = document.getElementById('radierer');
+function werkzeug(r) {
+  radierer = r;
+  btnStift.classList.toggle('aktiv', !r);
+  btnRadierer.classList.toggle('aktiv', r);
+  c.style.cursor = r ? 'cell' : 'crosshair';
+}
+btnStift.onclick = () => werkzeug(false);
+btnRadierer.onclick = () => werkzeug(true);
+farbe.addEventListener('input', () => werkzeug(false));  // Farbwahl schaltet zurück auf Stift
 
 document.getElementById('undo').onclick = () => {
   const s = verlauf.pop();
@@ -1383,10 +1478,12 @@ document.getElementById('save').onclick = () => {
 """
 
 
-def portrait_html(start):
-    """Die Zeichenfläche als HTML; 'start' ist ein vorhandenes Bild (PNG-Data-URL) oder None."""
+def portrait_html(start, key="portrait_transport"):
+    """Die Zeichenfläche als HTML; 'start' ist ein vorhandenes Bild (PNG-Data-URL) oder None.
+    'key' ist der Container-Key des versteckten Übergabefelds."""
     start_js = json.dumps(start or "").replace("</", "<\\/")
-    return PORTRAIT_HTML.replace("__START__", start_js)
+    return (PORTRAIT_HTML.replace("__START__", start_js)
+            .replace("__KEY__", json.dumps(key)))
 
 
 def mini_bild_hochladen():
@@ -1982,7 +2079,7 @@ REGELWERKE = {
         "formular": cc_formular,
         "gm_ansicht": cc_gm_ansicht,
         "sidebar": cc_sidebar,
-        "css": None,
+        "css": CC_CSS,
         "portrait_png": None,
     },
     MINI: {
