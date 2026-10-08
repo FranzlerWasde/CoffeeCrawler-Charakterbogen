@@ -793,29 +793,28 @@ def cc_tab_uebersicht():
 
 def cc_uebersicht_charakter():
     s = st.session_state
-    with st.container(border=True, key="CSS_Charakterdetails"):
-        st.subheader("Charakter")
+    with st.expander("Charakter"):
         st.html(f"🏷️Charaktername:&emsp; {html_text(s['char_name'])}")
         st.html(f"🎬Setting:&emsp; {html_text(s['Setting'])}")
 
-        st.subheader("👤 Porträt")
+    with st.expander("👤 Porträt"):
         if s["bild_base64"]:
             st.image(base64.b64decode(s["bild_base64"]), use_container_width=True)
             st.caption(f"Name: {s['char_name'] or 'Der namenlos geborene von irgendwoher'}")
         else:
             st.info("Dein Held hat noch kein Gesicht.")
 
-        with st.expander("Stammdaten"):
-            cc_felder_anzeigen([("Volksangehörigkeit", "Volksangehörigkeit"),
-                                ("Geschlecht", "Geschlecht"), ("Aussehen", "Aussehen"),
-                                ("Erster Eindruck", "Erster Eindruck")])
-        with st.expander("Hintergrund"):
-            cc_felder_anzeigen([("Beruf", "Beruf"), ("Erlernte Fähigkeiten", "Erlernte Fähigkeiten"),
-                                ("Hintergrund", "Hintergrund"), ("Ziele", "Ziele")])
-        with st.expander("Persönliches"):
-            cc_felder_anzeigen([("Charaktereigenschaften", "Charaktereigenschaften"),
-                                ("Ideale", "Ideale"), ("Bindung", "Bindung"),
-                                ("Makel", "Makel"), ("Ängste", "Ängste")])
+    with st.expander("Stammdaten"):
+        cc_felder_anzeigen([("Volksangehörigkeit", "Volksangehörigkeit"),
+                            ("Geschlecht", "Geschlecht"), ("Aussehen", "Aussehen"),
+                            ("Erster Eindruck", "Erster Eindruck")])
+    with st.expander("Hintergrund"):
+        cc_felder_anzeigen([("Beruf", "Beruf"), ("Erlernte Fähigkeiten", "Erlernte Fähigkeiten"),
+                            ("Hintergrund", "Hintergrund"), ("Ziele", "Ziele")])
+    with st.expander("Persönliches"):
+        cc_felder_anzeigen([("Charaktereigenschaften", "Charaktereigenschaften"),
+                            ("Ideale", "Ideale"), ("Bindung", "Bindung"),
+                            ("Makel", "Makel"), ("Ängste", "Ängste")])
 
 
 def cc_uebersicht_werte():
@@ -829,21 +828,21 @@ def cc_uebersicht_werte():
                   label_visibility="collapsed")
             st.text_input("Lebenspunkte rechnen", key="lp_eingabe", on_change=cc_lp_rechnen,
                       placeholder="LP ändern: +10 / -5", label_visibility="collapsed")
-        st.subheader("📊 Attribute")
-        st.html(f"Level: {s['Level']}")
-        st.divider()
-        for attribut in CC_ATTRIBUTE:
-            st.html(f"<b>{attribut}</b>: <b>{s[attribut]}</b>")
+        with st.expander("📊 Attribute"):
+            st.html(f"Level: {s['Level']}")
+            st.divider()
+            for attribut in CC_ATTRIBUTE:
+                st.html(f"<b>{attribut}</b>: <b>{s[attribut]}</b>")
 
-        st.subheader("Talente")
-        col_wert, col_name = st.columns([1, 10])
-        with col_wert:
-            for i in range(1, CC_ANZAHL_TALENTE + 1):
-                wert = s[f"TalentWert {i}"]
-                absatz(wert if wert >= 1 else "")
-        with col_name:
-            for i in range(1, CC_ANZAHL_TALENTE + 1):
-                absatz(s[f"Talent {i}"])
+        with st.expander("Talente"):
+            col_wert, col_name = st.columns([1, 10])
+            with col_wert:
+                for i in range(1, CC_ANZAHL_TALENTE + 1):
+                    wert = s[f"TalentWert {i}"]
+                    absatz(wert if wert >= 1 else "")
+            with col_name:
+                for i in range(1, CC_ANZAHL_TALENTE + 1):
+                    absatz(s[f"Talent {i}"])
 
 
 def cc_uebersicht_kampf():
@@ -869,16 +868,7 @@ def cc_uebersicht_kampf():
 
 
 def cc_uebersicht_status():
-    s = st.session_state
-    with st.container(border=True):
-        st.subheader("Lebenspunkte")
-        maximum = cc_max_lebenspunkte()
-        st.header(f"{s['Lebenspunkte']} / {maximum}")
-        st.slider("Lebenspunkte", min_value=0, max_value=maximum, key="Lebenspunkte",
-                  label_visibility="collapsed")
-        st.text_input("Lebenspunkte rechnen", key="lp_eingabe", on_change=cc_lp_rechnen,
-                      placeholder="LP ändern: +10 / -5", label_visibility="collapsed")
-
+    s = st.session_state        
     with st.container(border=True):
         st.subheader("Zähler")
         for spalte, nr in zip(st.columns(3), (1, 2, 3)):
