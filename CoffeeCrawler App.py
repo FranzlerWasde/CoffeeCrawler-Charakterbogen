@@ -391,11 +391,13 @@ CC_HAENDE = {"HH": "Haupthand", "ZH": "Zweihändig", "NH": "Nebenhand"}
 CC_KAMPF = {
     "titel": "Attacke", "anzahl": 6,
     "name": "Attacke {i}", "probe": "Probe_Kampf {i}",
+    "attr": "Probe_Kampf_Attribut {i}", "talent": "Probe_Kampf_Talent {i}",
     "rw": "Reichweite {i}", "schaden": "Schaden {i}",
 }
 CC_TRICKS = {
     "titel": "Trick", "anzahl": 6,
     "name": "Trick {i}", "probe": "Probe_Trick {i}",
+    "attr": "Probe_Trick_Attribut {i}", "talent": "Probe_Trick_Talent {i}",
     "rw": "Reichweite_Trick {i}", "schaden": "Schaden_Trick {i}",
 }
 CC_TABELLEN = [CC_KAMPF, CC_TRICKS]
@@ -461,6 +463,8 @@ def cc_standardwerte():
         for i in range(1, spec["anzahl"] + 1):
             for feld in ("name", "probe", "rw", "schaden"):
                 werte[spec[feld].format(i=i)] = ""
+            werte[spec["attr"].format(i=i)] = ""
+            werte[spec["talent"].format(i=i)] = 0
     for kuerzel in CC_HAENDE:
         werte[f"{kuerzel}_Nahkampf"] = ""
         werte[f"{kuerzel}_Fernkampf"] = ""
@@ -526,7 +530,9 @@ def cc_bereit():
     st.session_state["Lebenspunkte"] = max(0, min(st.session_state["Lebenspunkte"], cc_max_lebenspunkte()))
     st.session_state["Skillenergie"] = max(0, min(st.session_state["Skillenergie"],
                                                   st.session_state["max_Skillenergie"]))
-
+    st.session_state["Skillenergie"] = max(0, min(st.session_state["Skillenergie"],
+                                                  st.session_state["max_Skillenergie"]))
+    cc_proben_aktualisieren()
 
 # ----- 4c. Callbacks
 def cc_bild_verarbeiten():
@@ -656,10 +662,39 @@ def cc_talent_optionen():
 
 
 def cc_talent_anzeigename(i):
+    
     if i == 0:
         return "– kein Talent –"
     return f"{st.session_state[f'Talent {i}']} (+{st.session_state[f'TalentWert {i}']})"
+def cc_talent_kurzname(i):
+    return "– kein Talent –" if i == 0 else st.session_state[f"Talent {i}"]
 
+
+def cc_probe_wert(attribut, talent_nr):
+    """Attributwert + Talentwert als Text; leer, wenn beides nicht gewählt ist."""
+    if not attribut and not talent_nr:
+        return ""
+    wert = st.session_state[attribut] if attribut else 0
+    if talent_nr:
+        wert += st.session_state[f"TalentWert {talent_nr}"]
+    return str(wert)
+
+
+def cc_proben_aktualisieren():
+    """Berechnet die Probenwerte aller Attacken und Tricks neu.
+    Läuft vor dem Zeichnen des Bogens, damit auch die Übersicht den aktuellen Wert zeigt."""
+    s = st.session_state
+    attribut_optionen = [""] + CC_ATTRIBUTE
+    talent_optionen = cc_talent_optionen()
+    for spec in CC_TABELLEN:
+        for i in range(1, spec["anzahl"] + 1):
+            attr_key = spec["attr"].format(i=i)
+            talent_key = spec["talent"].format(i=i)
+            if s[attr_key] not in attribut_optionen:
+                s[attr_key] = ""
+            if s[talent_key] not in talent_optionen:  # Talent wurde umbenannt/entfernt
+                s[talent_key] = 0
+            s[spec["probe"].format(i=i)] = cc_probe_wert(s[attr_key], s[talent_key])
 
 def cc_probe_callback():
     """Berechnet den Zielwert, würfelt 1W100 und speichert das Ergebnis."""
@@ -747,8 +782,9 @@ def cc_aktionen_anzeigen(spec):
 
 
 def cc_aktionen_editor(spec):
-    """Eingabe-Ansicht einer Tabelle (Name · Probe · Reichweite · Schaden)."""
-    spalten = st.columns([3, 2, 1, 2], vertical_alignment="center")
+    """Eingabe-Ansicht einer Tabelle (Name · Attribut · Talent · Probe · Reichweite · Schaden).
+    Die Probe wird aus Attribut + Talent berechnet und nur angezeigt."""
+    spalten = st.columns([3, 2, 2, 1, 1, 2], vertical_alignment="center")
     kopf = "st-key-Handverteilung"
     with spalten[0]:
         absatz(spec["titel"], kopf)
@@ -756,27 +792,37 @@ def cc_aktionen_editor(spec):
             key = spec["name"].format(i=i)
             st.text_input(f"{key}:", key=key, label_visibility="collapsed")
     with spalten[1]:
+        absatz("Attribut", kopf)
+        for i in range(1, spec["anzahl"] + 1):
+            key = spec["attr"].format(i=i)
+            st.selectbox(f"{key}:", options=[""] + CC_ATTRIBUTE, key=key,
+                         format_func=lambda a: a or "–", label_visibility="collapsed")
+    with spalten[2]:
+        absatz("Talent", kopf)
+        for i in range(1, spec["anzahl"] + 1):
+            key = spec["talent"].format(i=i)
+            st.selectbox(f"{key}:", options=cc_talent_optionen(), key=key,
+                         format_func=cc_talent_kurzname, label_visibility="collapsed")
+    with spalten[3]:
         absatz("Probe", kopf)
         for i in range(1, spec["anzahl"] + 1):
             key = spec["probe"].format(i=i)
-            st.selectbox(f"{key}:", options=list(CC_WUERFEL), key=key, label_visibility="collapsed")
-    with spalten[2]:
-        absatz("Reichweite", kopf)
+            st.text_input(f"{key}:", key=key, disabled=True, label_visibility="collapsed")
+    with spalten[4]:
+        absatz("RW", kopf)
         for i in range(1, spec["anzahl"] + 1):
             key = spec["rw"].format(i=i)
             st.text_input(f"{key}:", key=key, label_visibility="collapsed")
-    with spalten[3]:
+    with spalten[5]:
         absatz("Schaden", kopf)
         for i in range(1, spec["anzahl"] + 1):
             key = spec["schaden"].format(i=i)
             st.selectbox(f"{key}:", options=list(CC_WUERFEL), key=key, label_visibility="collapsed")
 
-
 def cc_felder_anzeigen(felder):
     """Zeigt Paare aus (Beschriftung, Key) als 'Beschriftung: Wert'."""
     for label, key in felder:
         st.html(f"{label}:&emsp; {html_text(st.session_state[key])}")
-
 
 # ----- 4f. Tab „Übersicht“
 def cc_tab_uebersicht():
