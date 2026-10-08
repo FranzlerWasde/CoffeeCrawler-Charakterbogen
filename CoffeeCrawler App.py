@@ -820,24 +820,30 @@ def cc_uebersicht_charakter():
 
 def cc_uebersicht_werte():
     s = st.session_state
-    with st.container(border=True, key="CSS_Container_AttributeundTalente"):
-        col_attribute, col_talente = st.columns(2)
-        with col_attribute:
-            st.subheader("📊 Attribute")
-            st.html(f"Level: {s['Level']}")
-            st.divider()
-            for attribut in CC_ATTRIBUTE:
-                st.html(f"<b>{attribut}</b>: <b>{s[attribut]}</b>")
-        with col_talente:
-            st.subheader("Talente")
-            col_wert, col_name = st.columns([1, 10])
-            with col_wert:
-                for i in range(1, CC_ANZAHL_TALENTE + 1):
-                    wert = s[f"TalentWert {i}"]
-                    absatz(wert if wert >= 1 else "")
-            with col_name:
-                for i in range(1, CC_ANZAHL_TALENTE + 1):
-                    absatz(s[f"Talent {i}"])
+    with st.container(border=True):
+        with st.expander("Lebenspunkte"):
+            st.subheader("Lebenspunkte")
+            maximum = cc_max_lebenspunkte()
+            st.header(f"{s['Lebenspunkte']} / {maximum}")
+            st.slider("Lebenspunkte", min_value=0, max_value=maximum, key="Lebenspunkte",
+                  label_visibility="collapsed")
+            st.text_input("Lebenspunkte rechnen", key="lp_eingabe", on_change=cc_lp_rechnen,
+                      placeholder="LP ändern: +10 / -5", label_visibility="collapsed")
+        st.subheader("📊 Attribute")
+        st.html(f"Level: {s['Level']}")
+        st.divider()
+        for attribut in CC_ATTRIBUTE:
+            st.html(f"<b>{attribut}</b>: <b>{s[attribut]}</b>")
+
+        st.subheader("Talente")
+        col_wert, col_name = st.columns([1, 10])
+        with col_wert:
+            for i in range(1, CC_ANZAHL_TALENTE + 1):
+                wert = s[f"TalentWert {i}"]
+                absatz(wert if wert >= 1 else "")
+        with col_name:
+            for i in range(1, CC_ANZAHL_TALENTE + 1):
+                absatz(s[f"Talent {i}"])
 
 
 def cc_uebersicht_kampf():
