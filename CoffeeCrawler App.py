@@ -382,7 +382,7 @@ CC_ATTRIBUTE = ["Charisma", "Manipulation", "Erscheinung", "Intelligenz",
                 "Weisheit", "Wahrnehmung", "Stärke", "Geschick", "Konstitution"]
 CC_ANZAHL_TALENTE = 10
 CC_ANZAHL_ITEMS = 15
-CC_HISTORIE_MAX = 50
+CC_HISTORIE_MAX = 20
 CC_WUERFEL = {"": 0, "W4": 4, "W6": 6, "W8": 8, "W10": 10, "W12": 12, "W20": 20, "W100": 100}
 CC_SCHADENSWUERFEL = ["1W4", "1W8", "2W6"]
 CC_HAENDE = {"HH": "Haupthand", "ZH": "Zweihändig", "NH": "Nebenhand"}
@@ -842,8 +842,7 @@ def cc_uebersicht_werte():
 
 def cc_uebersicht_kampf():
     s = st.session_state
-    with st.container(border=True):
-        st.subheader("Kampf")
+    with st.expander("Kampf"):
         cc_aktionen_anzeigen(CC_KAMPF)
 
     with st.expander("Skills"):
@@ -1161,7 +1160,7 @@ MINI_WUERFEL = ["W4", "W6", "W8", "W10", "W12"]
 MINI_ATTRIBUTE = ["Erscheinung", "Charisma", "Manipulation", "Intelligenz",
                   "Weisheit", "Wahrnehmung", "Stärke", "Geschicklichkeit", "Konstitution"]
 MINI_ANZAHL_TALENTE = 3
-MINI_MAX_HISTORIE = 50
+MINI_MAX_HISTORIE = 20
 
 MINI_CSS = """
 <style>
@@ -1645,8 +1644,8 @@ MINI_HP_MODI = ["zufall", "fest", "treffer"]
 MINI_HP_NAMEN = {"zufall": "Zufällige Lebenspunkte", "fest": "Feste Lebenspunkte",
                  "treffer": "Trefferpunkte"}
 MINI_TREFFER_MAX = 30
-MINI_TREFFER_STANDARD = 3
-MINI_FEST_STANDARD = 10
+MINI_TREFFER_STANDARD = 10
+MINI_FEST_STANDARD = 100
 
 
 def mini_zahl(wert, standard=None):
