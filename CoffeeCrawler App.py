@@ -2097,7 +2097,7 @@ def entwurf_in_db_speichern():
     name = bogen_name(bogen)
     besitzer = e["besitzer"] or st.session_state.get("spieler", "").strip()
     if not besitzer:
-        return "Gib links deinen Spielernamen ein, um den Charakter zu speichern."
+        return "Gib links in der Sidebar deinen Spielernamen ein, um den Charakter zu speichern."
     if not name:
         return "Bitte gib dem Charakter einen Namen."
     charakter_speichern(besitzer, name, bogen)
@@ -2170,7 +2170,7 @@ def json_laden():
 def seite_neu(spieler):
     st.title("Neuen Charakter erstellen")
     if not spieler:
-        st.info("Gib links deinen Spielernamen ein, um einen neuen Charakter zu erstellen.")
+        st.info("Gib links in der Sidebar deinen Spielernamen ein, um einen neuen Charakter zu erstellen.")
         return
 
     st.selectbox("Regelwerk", list(REGELWERKE), format_func=regelwerk_name, key="neu_regelwerk")
