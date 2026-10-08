@@ -796,6 +796,15 @@ def cc_uebersicht_charakter():
     with st.expander("Charakter"):
         st.html(f"🏷️Charaktername:&emsp; {html_text(s['char_name'])}")
         st.html(f"🎬Setting:&emsp; {html_text(s['Setting'])}")
+        cc_felder_anzeigen([("Volksangehörigkeit", "Volksangehörigkeit"),
+                            ("Geschlecht", "Geschlecht"), ("Aussehen", "Aussehen"),
+                            ("Erster Eindruck", "Erster Eindruck")])
+        cc_felder_anzeigen([("Beruf", "Beruf"), ("Erlernte Fähigkeiten", "Erlernte Fähigkeiten"),
+                            ("Hintergrund", "Hintergrund"), ("Ziele", "Ziele")])
+        cc_felder_anzeigen([("Charaktereigenschaften", "Charaktereigenschaften"),
+                            ("Ideale", "Ideale"), ("Bindung", "Bindung"),
+                            ("Makel", "Makel"), ("Ängste", "Ängste")])
+
 
     with st.expander("👤 Porträt"):
         if s["bild_base64"]:
@@ -804,17 +813,6 @@ def cc_uebersicht_charakter():
         else:
             st.info("Dein Held hat noch kein Gesicht.")
 
-    with st.expander("Stammdaten"):
-        cc_felder_anzeigen([("Volksangehörigkeit", "Volksangehörigkeit"),
-                            ("Geschlecht", "Geschlecht"), ("Aussehen", "Aussehen"),
-                            ("Erster Eindruck", "Erster Eindruck")])
-    with st.expander("Hintergrund"):
-        cc_felder_anzeigen([("Beruf", "Beruf"), ("Erlernte Fähigkeiten", "Erlernte Fähigkeiten"),
-                            ("Hintergrund", "Hintergrund"), ("Ziele", "Ziele")])
-    with st.expander("Persönliches"):
-        cc_felder_anzeigen([("Charaktereigenschaften", "Charaktereigenschaften"),
-                            ("Ideale", "Ideale"), ("Bindung", "Bindung"),
-                            ("Makel", "Makel"), ("Ängste", "Ängste")])
 
 
 def cc_uebersicht_werte():
